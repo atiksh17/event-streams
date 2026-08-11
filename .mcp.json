@@ -6,9 +6,9 @@
     },
     "nocodb-streams": {
       "type": "http",
-      "url": "https://db.goautofusion.com/mcp/nc6gt1uozqt6i76m",
+      "url": "https://db.goautofusion.com/mcp/ncuiv55fi0t1x0em",
       "headers": {
-        "xc-mcp-token": "nc_pat_JhPGUTE85p4pp5LZcNSvWTTg30Izj0vNcwVDtS4C"
+        "xc-mcp-token": "LC88jPysG_vWIvbD6uFX-W5Q63BomtsV"
       }
     }
   }
