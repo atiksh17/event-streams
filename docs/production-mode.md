@@ -162,9 +162,14 @@ that are about ownership as much as risk:
   schema. A skill-driven write risks colliding with that — wrong column,
   wrong row, or simply data the automated system didn't expect to see change
   — for a system that isn't watching for external edits.
-- **The NocoDB token this skill uses is deliberately read-only.** That's not
-  an accident of setup; it's the safety margin. If enrichment logic has a
-  bug, the worst case is a wrong CSV, which you notice and re-run. A bad
+- **The NocoDB token this skill uses is not read-only — the endpoint exposes
+  `createRecords`, `updateRecords`, and `deleteRecords`, and we verified live
+  on 2026-08-10 that all three work with the connected token.** There is no
+  credential-level safety margin here. The only thing standing between
+  enrichment logic and a write is the skill's own prohibition (see
+  `.claude/skills/event-streams/SKILL.md`). If enrichment logic has a bug,
+  the worst case being "a wrong CSV, which you notice and re-run" depends
+  entirely on the skill actually never calling those three tools — a bad
   write to a live production base doesn't have that same easy undo.
 - **A CSV is something the user can actually look at before it goes
   anywhere else.** Whatever happens after enrichment — importing into a CRM,
