@@ -13,7 +13,7 @@ fifteen minutes or real money.
 
 | Mode | Use when | Touches |
 |---|---|---|
-| **Test** | Trialling keywords and a qualification prompt | Discovery endpoint only |
+| **Test** | Trialling keywords, sources and a qualification prompt | Discovery endpoint only |
 | **Production** | Enriching rows a daily stream already collected | NocoDB + AI Ark only |
 
 Test mode never reads NocoDB. Production mode never calls the discovery
@@ -21,14 +21,36 @@ endpoint.
 
 ## Test mode
 
-Trialling keywords and a qualification prompt. Touches the discovery endpoint
-and nothing else — no NocoDB, no AI Ark, nothing is spent.
+Trialling keywords, sources and a qualification prompt. Touches the discovery
+endpoint and nothing else — no NocoDB, no AI Ark, nothing is spent.
 
 ### Before you start, say this out loud
 
 > This takes 5 to 15 minutes. I'll tell you the moment it lands.
 
 A silent ten-minute wait reads as a crash.
+
+### Pick the sources
+
+Every request carries a third field, `sources` — an array of the sources the
+run sweeps. **Three values are accepted, and the spelling is exact:**
+
+    "Google News"
+    "Justgiving"
+    "LinkedIn"
+
+- **At least one.** An empty array is not a valid request, and neither is
+  omitting the field.
+- **Copy those strings; do not retype them from memory.** `"Google news"`,
+  `"JustGiving"`, `"Linkedin"`, `"Just Giving"` are all wrong.
+- The brand styles itself *JustGiving* in public. The endpoint wants
+  `Justgiving`, lowercase g. **Do not "correct" it.**
+- Whatever is in the array is what runs. All three strings = all three
+  sources.
+
+Ask the user which sources they want. If they have no preference, use all
+three and say that you did — a pass rate means nothing without knowing which
+sources produced it.
 
 ### Fire the request
 
@@ -39,7 +61,9 @@ a dead endpoint, and you will debug the wrong thing.
     mkdir -p data/.runs
     RUN=$(date +%Y%m%d-%H%M%S)
     cat > "data/.runs/$RUN.request.json" <<'JSON'
-    {"keywords": "...", "qualificationPrompt": "..."}
+    {"keywords": "...",
+     "qualificationPrompt": "...",
+     "sources": ["Google News", "Justgiving", "LinkedIn"]}
     JSON
     nohup curl -sS --max-time 1800 -X POST https://n8n.goautofusion.com/webhook/stream \
       -H 'Content-Type: application/json' \
@@ -70,6 +94,11 @@ push for which companies should not be there and why. Then rewrite the
 qualification prompt, **show the before and after**, and re-run only once the
 user agrees.
 
+`sources` is the third lever, and the cheapest one to reason about: if every
+bad row came from one source, drop it from the array rather than writing a
+sentence into the prompt to exclude it. If a run found almost nothing, widen
+the array before you widen the keywords.
+
 Every re-run costs another 5–15 minutes, so it is worth one more question up
 front rather than three more runs.
 
@@ -79,6 +108,10 @@ Print the row for them to add to the `Streams` table:
 
     keywords:            <the winning keywords>
     qualificationPrompt: <the winning prompt>
+    sources:             <the sources that run used, exactly as spelled>
+
+Give the sources even if `Streams` has no field for them — the result the
+user is about to schedule came from those sources and no others.
 
 **You do not write this row.** A row in `Streams` means "run this every day,
 forever" — that is the user's decision to make in NocoDB, not a side effect of
@@ -91,7 +124,8 @@ a successful test.
 | `404 ... "The workflow must be active for a production URL to run"` | Right URL, but the n8n workflow is switched off | Only a human can fix this: ask them to activate the workflow with the toggle at the top-right of the n8n editor, then re-run. Do not retry until they confirm — it will 404 every time |
 | `404 ... webhook "stream" is not registered` (no "must be active" hint) | The test URL was used | Use the production URL |
 | `{"message":"Workflow was started"}` | n8n is set to respond immediately | The workflow needs a *Respond to Webhook* node; results are not coming |
-| `[]` | Keywords matched nothing | A keyword problem, not a fault |
+| Any error naming `sources` | A misspelled value, or an empty/missing array | Re-check the array against the three exact strings, character by character. Fix and re-run — this one is yours, not the user's |
+| `[]` | Keywords matched nothing, or the sources were too narrow | A keyword or sources problem, not a fault |
 | Every row `relevant: false` | Prompt too strict | A prompt problem — offer a looser rewrite |
 | Body is not JSON | n8n returned an error page | Show the first 500 bytes, do not parse |
 | `.status` never appears | Run exceeded 30 minutes | Report the timeout. Do not silently retry |

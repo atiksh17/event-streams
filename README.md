@@ -34,9 +34,10 @@ Copy this:
 
 ## The two modes
 
-**Testing keywords** — you give keywords and a description of what counts as a
-good result. It goes and looks, then shows you what it found so you can sharpen
-the description. Takes 5 to 15 minutes each time.
+**Testing keywords** — you give keywords, a description of what counts as a
+good result, and which sources to look in (Google News, Justgiving, LinkedIn —
+any combination, at least one). It goes and looks, then shows you what it found
+so you can sharpen the description. Takes 5 to 15 minutes each time.
 
 **Enriching** — the system collects results every day on its own. When you want
 contacts, name the table and it produces a spreadsheet of people with emails and

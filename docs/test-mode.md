@@ -10,30 +10,65 @@ find the right companies?** It costs nothing but time — 5 to 15 minutes per
 run — but that time adds up if you re-run on guesses instead of on reasoned
 changes. This doc is mostly about avoiding wasted runs.
 
-## What "keywords" and "qualification prompt" actually do
+## What keywords, sources and the qualification prompt actually do
 
 The discovery endpoint doesn't do one job — it does two, in sequence, and
 they fail in different ways.
 
-1. **Keywords** cast a wide net across sources (news, fundraising pages,
-   press releases) and pull back anything that mentions them. This step is
-   dumb on purpose — it over-collects.
+1. **Keywords** cast a wide net across **the sources you named** and pull
+   back anything that mentions them. This step is dumb on purpose — it
+   over-collects.
 2. **The qualification prompt** is handed to a model, one candidate company
    at a time, and asked to judge: does this company actually belong on the
    list? This step is where discrimination happens.
 
-If your results are wrong, the fix is almost always in one of these two
+**`sources` decides where step 1 is even allowed to look.** It's a required
+array on every request, with three accepted values spelled exactly
+`"Google News"`, `"Justgiving"`, `"LinkedIn"` — see
+[reference/endpoints.md](reference/endpoints.md) for the literal contract.
+A source that isn't in the array contributes nothing, no matter how good the
+keywords are.
+
+If your results are wrong, the fix is almost always in one of these three
 places, and the symptom tells you which one:
 
-- Too few results, or an empty array → keyword problem. The net wasn't wide
-  enough, or the terms don't match how sources actually phrase things.
+- Too few results, or an empty array → keywords, or too few sources. The net
+  wasn't wide enough, the terms don't match how sources phrase things, or
+  the one source you picked doesn't carry this kind of story.
 - Plenty of results but the wrong companies, or a flood of `relevant: false`
   → qualification prompt problem. The net was fine; the judgment was loose
   or wrong.
+- The wrong companies, and they all came from the same place → a sources
+  problem. Drop that source rather than writing a sentence into the prompt
+  to exclude what it keeps dragging in.
 
 Fix the one that's broken. A vague prompt does not get better by adding more
 keywords, and a bad keyword list does not get better by tightening the
 prompt.
+
+## Choosing sources
+
+The three sources answer different questions, and a keyword set that works
+on one can return nothing on another:
+
+- **Google News** — press coverage. Local papers naming a company whose
+  staff rode, trade press, announcements. Broadest of the three, and the
+  noisiest.
+- **Justgiving** — fundraising pages. The highest-signal source when you're
+  after staff *participation*, because a page usually names both the person
+  and their employer. Narrow: it only sees charity events.
+- **LinkedIn** — company and employee posts. Good for corporate challenges
+  and team events that never reach the press, and for recent activity.
+
+Start with all three unless the user has a reason not to. It costs the same
+5–15 minutes as one source, and the first run's job is to tell you where the
+signal actually lives. Narrow on the second run, once you can point at which
+source produced the rows you didn't want.
+
+Always report which sources a run used alongside its pass rate. "14 of 61
+passed" means something different from all three sources than it does from
+Justgiving alone, and a number recorded without that context can't be
+compared to the next run.
 
 ## Writing a qualification prompt that discriminates
 

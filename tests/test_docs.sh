@@ -31,6 +31,19 @@ check "every relative markdown link resolves" $?
 grep -q 'webhook/stream' README.md || grep -q 'setup.sh' README.md
 check "README names the install command" $?
 
+# The discovery endpoint rejects anything but these three literals, so the
+# spelling in the docs is the contract. A "helpful" fix to JustGiving breaks
+# every run.
+SKILL=.claude/skills/event-streams/SKILL.md
+grep -q '"sources": \["Google News", "Justgiving", "LinkedIn"\]' "$SKILL"
+check "skill's request body sends sources, spelled exactly" $?
+for s in 'Google News' 'Justgiving' 'LinkedIn'; do
+  grep -q "\"$s\"" "$SKILL" && grep -q "\"$s\"" docs/reference/endpoints.md
+  check "  ...\"$s\" documented in the skill and the reference" $?
+done
+grep -qi 'at least one' "$SKILL" && grep -qi 'at least one' docs/reference/endpoints.md
+check "  ...and both say at least one source is required" $?
+
 echo
 if [ "$fails" -gt 0 ]; then echo "$fails check(s) failed"; exit 1; fi
 echo "all doc checks passed"

@@ -37,7 +37,7 @@ skill, same `.env`, nothing to reconfigure.
 
 ## Two modes, and they share nothing
 
-**Test mode** — trialling keywords and a qualification prompt. Touches the
+**Test mode** — trialling keywords, sources and a qualification prompt. Touches the
 discovery endpoint only. No NocoDB, no AI Ark, nothing is spent.
 
 **Production mode** — enriching rows a daily stream already collected.

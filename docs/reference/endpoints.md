@@ -15,7 +15,21 @@ Where a value hasn't been confirmed against a real run yet, it's marked
   `{"code":404,"message":"The requested webhook \"stream\" is not registered.","hint":"Click the 'Execute workflow' button on the canvas, then try again."}`
   until someone arms it by clicking *Execute workflow* in the n8n canvas. A
   debugging aid only — never the skill's path.
-- **Request body**: `{"keywords": "<comma separated>", "qualificationPrompt": "<text>"}`
+- **Request body**: three fields, all required —
+  `{"keywords": "<comma separated>", "qualificationPrompt": "<text>", "sources": [...]}`
+- **`sources`**: an array of strings naming which sources the run sweeps.
+  Exactly three values are accepted, and they are **case- and
+  spacing-sensitive literals**:
+  - `"Google News"`
+  - `"Justgiving"` — note the lowercase `g`. The brand styles itself
+    *JustGiving*; the endpoint does not. Do not "correct" it.
+  - `"LinkedIn"`
+
+  **At least one is required** — an empty array is not a valid request, and
+  neither is omitting the field. Whichever values are present are the
+  sources used; all three present means all three run. Anything not spelled
+  exactly as above is a mistake, not a variant. Added to the contract
+  2026-08-11.
 - **Response**: an array of objects shaped
   `{companyName, relevant, confidence, reason, source, content}`. Not yet
   verified against a real completed run — Task 9.
