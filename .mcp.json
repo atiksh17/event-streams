@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "ai-ark": {
+      "type": "http",
+      "url": "https://api.ai-ark.com/v1/mcp?token=6743e5f5239b44dbbc27c293dd9ca3e0"
+    },
+    "nocodb-streams": {
+      "type": "http",
+      "url": "https://db.goautofusion.com/mcp/nc6gt1uozqt6i76m",
+      "headers": {
+        "xc-mcp-token": "nc_pat_JhPGUTE85p4pp5LZcNSvWTTg30Izj0vNcwVDtS4C"
+      }
+    }
+  }
+}
