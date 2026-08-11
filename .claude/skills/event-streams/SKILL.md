@@ -104,6 +104,13 @@ Reads NocoDB via the `nocodb-streams` MCP server, enriches via the `ai-ark`
 MCP server. Never writes to either. Two different agent harnesses run this
 skill; both are configured with servers of these same two names.
 
+**On Codex, step 5 (enrich) will fail** — AI Ark's MCP server has a known
+upstream bug where Codex's client can't consume its response shape (see
+[docs/troubleshooting.md](../../../docs/troubleshooting.md), `Transport
+channel closed`). Reading NocoDB and test mode both still work from Codex.
+If you're running as Codex, say this up front and switch to Claude Code
+before reading any rows for enrichment.
+
 ### 1. Find out what to enrich
 
 Ask which table, and which rows. The user can see the base and you cannot —

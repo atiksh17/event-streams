@@ -1,9 +1,10 @@
 # Reference: endpoints and tools
 
 Exact facts about the systems this skill touches — the discovery endpoint,
-AI Ark, and NocoDB. Probed live on 2026-08-10. Where a value hasn't been
-confirmed against a real run yet, it's marked "not yet verified" rather
-than guessed.
+AI Ark, and NocoDB. Probed live on 2026-08-10, with one later addition
+(AI Ark's transport shape, below) probed 2026-08-11 and dated inline.
+Where a value hasn't been confirmed against a real run yet, it's marked
+"not yet verified" rather than guessed.
 
 ## Discovery endpoint (test mode)
 
@@ -27,9 +28,27 @@ than guessed.
 
 - **URL**: `https://api.ai-ark.com/v1/mcp?token=<AI_ARK_API_KEY>` — the
   token is a **query parameter**, not a header.
-- **Status**: connected and verified working.
+- **Status**: connected and verified working — from Claude Code. Fails from
+  Codex; see the transport-shape finding below.
 - **Server info**: `serverInfo {name: "mcp", version: "1.0.0"}`, protocol
   `2025-06-18` — from a live `initialize` call, 2026-08-10.
+- **Transport shape (probed 2026-08-11)**: the server **requires**
+  `Accept: application/json, text/event-stream` on every request — omit it
+  and it 400s. But it always **replies** with `content-type: application/json`
+  and a raw JSON body, never an actual `text/event-stream` SSE stream with
+  `event:`/`data:` framing. Claude Code's MCP client tolerates that
+  deviation. Codex's `rmcp` streamable-HTTP client does not: it asks for
+  the stream it was told to expect, gets a non-stream back, and its
+  transport worker dies with `rmcp::transport::worker: worker quit with
+  fatal: Transport channel closed` — see
+  [../troubleshooting.md](../troubleshooting.md) for the full symptom and
+  workaround. **Contrast**: NocoDB's MCP server (below) replies
+  `content-type: text/event-stream` with proper `event:`/`data:` framing
+  for the same kind of request, and works from Codex — this contrast is
+  the whole diagnosis: same client, same repo config, different server
+  behavior. This is upstream AI Ark behavior, not a config choice in this
+  repo, and it may change — treat this as a dated, probed fact to retest,
+  not a permanent property of the server.
 - **Tools (11)**: `company_search`, `people_search`, `email_finder`,
   `email_finder_results`, `export_single`, `reverse_people_lookup`,
   `mobile_phone_finder`, `personality_analysis`, `industry_search`,

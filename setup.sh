@@ -9,10 +9,11 @@ CREDENTIALS_FILE="${CREDENTIALS_FILE:-./credentials.env}"
 CONFIGS_ONLY=0
 [ "${1:-}" = "--configs-only" ] && CONFIGS_ONLY=1
 
-say()  { printf '  %s\n' "$*"; }
-ok()   { printf '  \033[32mok\033[0m   %s\n' "$*"; }
-warn() { printf '  \033[33mskip\033[0m %s\n' "$*"; }
-die()  { printf '\n  \033[31mfailed\033[0m %s\n\n' "$*" >&2; exit 1; }
+say()     { printf '  %s\n' "$*"; }
+ok()      { printf '  \033[32mok\033[0m   %s\n' "$*"; }
+warn()    { printf '  \033[33mskip\033[0m %s\n' "$*"; }
+caution() { printf '  \033[33mwarn\033[0m %s\n' "$*"; }
+die()     { printf '\n  \033[31mfailed\033[0m %s\n\n' "$*" >&2; exit 1; }
 
 echo
 echo "event-streams setup"
@@ -136,17 +137,66 @@ if command -v claude >/dev/null 2>&1; then
     else printf '  \033[31mFAIL\033[0m claude %s did not connect\n' "$s"; rc=1; fi
   done
 fi
+codex_stream_warned=0
 if command -v codex >/dev/null 2>&1; then
+  # `codex mcp list` only reports registration - is the server present and
+  # enabled in config.toml. It says nothing about whether Codex can actually
+  # talk to it, which is exactly how AI Ark's incompatibility passed a green
+  # install before: registered but unreachable by Codex's client. The probe
+  # below is the real connectivity check - it hits each server the way
+  # Codex's rmcp streamable-HTTP client would and inspects the response.
   out=$(codex mcp list 2>&1 || true)
   for s in ai-ark nocodb-streams; do
-    if echo "$out" | grep -q "$s"; then ok "codex $s registered"
-    else printf '  \033[31mFAIL\033[0m codex %s missing\n' "$s"; rc=1; fi
+    if echo "$out" | grep -q "$s"; then ok "codex $s registered (config presence only, not a connectivity check)"
+    else printf '  \033[31mFAIL\033[0m codex %s missing from config\n' "$s"; rc=1; fi
   done
+
+  say "codex: probing whether each server actually answers with an SSE stream (what Codex's client requires)..."
+
+  probe_codex_stream_compat() {
+    # $1 = server label, $2 = url, remaining args = extra curl -H flags.
+    # Sends a real (free, unbilled) MCP `initialize` call with the Accept
+    # header Codex sends, then checks the reply's content-type. A server
+    # that answers with anything other than text/event-stream will make
+    # Codex's rmcp client die with "Transport channel closed" even though
+    # the server itself is healthy - Claude Code tolerates the deviation.
+    local name="$1" url="$2" hdrs status ctype_line ctype
+    shift 2
+    hdrs=$(curl -s -D - -o /dev/null -m 15 -X POST "$url" \
+      -H 'Content-Type: application/json' \
+      -H 'Accept: application/json, text/event-stream' \
+      "$@" \
+      -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"event-streams-setup","version":"1.0"}}}' \
+      2>/dev/null) || hdrs=""
+    status=$(printf '%s\n' "$hdrs" | awk 'NR==1{print $2}')
+    if [ -z "$status" ]; then
+      printf '  \033[31mFAIL\033[0m codex %s did not answer the probe at all (connection failed)\n' "$name"
+      rc=1
+      return
+    fi
+    ctype_line=$(printf '%s\n' "$hdrs" | tr -d '\r' | grep -i '^content-type:' | head -1)
+    ctype=$(printf '%s\n' "$ctype_line" | cut -d: -f2- | tr -d ' ' | tr '[:upper:]' '[:lower:]')
+    case "$ctype" in
+      text/event-stream*)
+        ok "codex $name answers with text/event-stream - Codex's client can use this server"
+        ;;
+      *)
+        caution "codex $name answers (HTTP $status) with content-type '${ctype:-none}', not text/event-stream. Codex's rmcp client requires an SSE reply and will fail on this server with \"Transport channel closed\" even though it answered - this is an upstream server bug, not a config problem. Claude Code is unaffected. See docs/troubleshooting.md."
+        codex_stream_warned=1
+        ;;
+    esac
+  }
+
+  probe_codex_stream_compat "ai-ark" "$AI_ARK_URL"
+  probe_codex_stream_compat "nocodb-streams" "$NOCODB_MCP_URL" -H "xc-mcp-token: ${NOCODB_MCP_TOKEN}"
 fi
 
 echo
 if [ "$rc" -ne 0 ]; then
   die "one or more servers did not come up. See docs/troubleshooting.md"
+fi
+if [ "$codex_stream_warned" -eq 1 ]; then
+  caution "install is otherwise healthy, but at least one server above can't be used from Codex (see the warning). Claude Code is unaffected - use it for anything that needs the affected server. Not treated as a failed install; details in docs/troubleshooting.md."
 fi
 ok "ready. Open this folder in Claude Code or Codex and say what you want to do."
 echo
