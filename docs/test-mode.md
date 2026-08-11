@@ -166,6 +166,14 @@ judgment on that specific row. It is not a probability that the company is
 real, and it is not a lead-quality score — it's how sure the model was about
 its yes/no call, given the evidence it saw.
 
+**The 0–100 scale below describes what the discovery endpoint returns in test
+mode**, confirmed by a real response carrying `"confidence": 95`. It is not
+safe to assume the same scale in the stored NocoDB rows — the live demo
+stream's own qualification prompt asks the model for 0 to 1 instead, and no
+run has yet written a row to settle it. See
+[reference/endpoints.md](reference/endpoints.md) before applying any of these
+thresholds to production-mode data.
+
 How to use it:
 
 - **High confidence (80+), either direction** — trust it and move on. These

@@ -136,6 +136,39 @@ Where a value hasn't been confirmed against a real run yet, it's marked
     read, never write, never offer as a target.
   - New stream tables appear over time. The rule is "not `Streams`, not
     `Template (DO NOT TOUCH)`" — never a fixed list to memorize.
+- **`Streams` columns** — from a live `queryRecords` against
+  `mfo88n8n35b9qvl`, 2026-08-11. Wider than the skill previously described:
+  `Stream Name`, `Stream Description`, `Keywords`, `Qualification Prompt`,
+  `Sources`, `Job Titles`, `Max Results`, `Lookback`, `Table ID`, `Status`,
+  `Enabled`, `Anchor`, `Last Run`, `Last Run Status`, `Total Found`,
+  `Total Passed`, `Total Contacts`, `Valid Emails`, `Cost`, `Last 24h`,
+  `Last 3d`, `Last 7d`, `Last 1m`, plus `CreatedAt` / `UpdatedAt`.
+- **`Streams` has a `Sources` column, and it is populated.** A multi-value
+  field carrying the same exact literals the request body uses — the live row
+  holds `["Google News", "LinkedIn", "Justgiving"]`. Earlier docs told the
+  agent to report sources "even if `Streams` has no field for them"; that was
+  wrong, and the winning sources belong in this column.
+- **`Status` and `Enabled` are independent.** The live demo row is
+  `Enabled: 1` **and** `Status: draft` simultaneously. `Enabled` alone does
+  not mean a stream is running.
+
+### The `Confidence` scale is unresolved
+
+Three sources disagree about what number belongs in `Confidence`, all
+observed 2026-08-11:
+
+| Where | Scale it implies |
+|---|---|
+| Discovery endpoint response | integer **0–100** (a real response carried `"confidence": 95`) |
+| NocoDB `Confidence` column type | **Decimal** — fits 0–1 and 0–100 equally |
+| Live demo stream's `Qualification Prompt` | *"Return a confidence score from 0 to 1"* |
+
+No stream has written rows yet, so which scale actually lands in the column
+is **not yet verified**. Read a real value before applying any threshold, and
+do not assume the 0–100 bands in [../test-mode.md](../test-mode.md) describe
+stored rows — they describe the endpoint's response. Reconciling the demo
+prompt with the endpoint's actual output is a human decision, and it is a
+change to the NocoDB base, which this skill never writes.
 
 ## Codex quirk worth recording
 

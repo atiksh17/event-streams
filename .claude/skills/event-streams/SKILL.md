@@ -104,14 +104,19 @@ front rather than three more runs.
 
 ### When the user is happy
 
-Print the row for them to add to the `Streams` table:
+Print the row for them to add to the `Streams` table, using that table's own
+column names rather than the request's field names:
 
-    keywords:            <the winning keywords>
-    qualificationPrompt: <the winning prompt>
-    sources:             <the sources that run used, exactly as spelled>
+    Keywords:             <the winning keywords>
+    Qualification Prompt: <the winning prompt>
+    Sources:              <the sources that run used, exactly as spelled>
 
-Give the sources even if `Streams` has no field for them — the result the
-user is about to schedule came from those sources and no others.
+`Streams` **has** a `Sources` column — a multi-value field holding the same
+exact strings the request uses, for example
+`["Google News", "LinkedIn", "Justgiving"]`. Verified live 2026-08-11. Put the
+sources in it; they are not an aside to mention in passing. The result the
+user is about to schedule came from those sources and no others, and a row
+saved without them will run against the wrong ones.
 
 **You do not write this row.** A row in `Streams` means "run this every day,
 forever" — that is the user's decision to make in NocoDB, not a side effect of
@@ -153,14 +158,28 @@ Ask which stream, and which rows. The user can see the base and you cannot —
 their answer is authoritative. "The new ones" is a valid answer; ask them
 which ones those are.
 
-Read the `Streams` table first and show what exists. Each row carries
-`Stream Name`, `Status`, `Table ID`, `Job Titles`, `Keywords` and running
-totals (`Total Found`, `Total Passed`, `Total Contacts`, `Valid Emails`,
-`Cost`). That one read tells you what the streams are, which are live, where
-each one's data lives, and what it has already cost.
+Read the `Streams` table first and show what exists. The full column list,
+verified live 2026-08-11, is wider than the handful you usually need:
+
+- **Identity and config** — `Stream Name`, `Stream Description`, `Keywords`,
+  `Qualification Prompt`, `Sources`, `Job Titles`, `Max Results`, `Lookback`
+- **Where the data lives** — `Table ID`
+- **State** — `Status`, `Enabled`, `Anchor`, `Last Run`, `Last Run Status`
+- **Running totals** — `Total Found`, `Total Passed`, `Total Contacts`,
+  `Valid Emails`, `Cost`
+- **Rolling counts** — `Last 24h`, `Last 3d`, `Last 7d`, `Last 1m`
+
+That one read tells you what the streams are, which are live, where each
+one's data lives, and what it has already cost.
+
+`Status` and `Enabled` are **two separate gates**, not one. A row can read
+`Enabled: 1` and still sit at `Status: draft` — that is the live demo row
+today. Do not report a stream as running on the strength of `Enabled` alone.
 
 A stream whose `Status` is `draft` has never run and its table will be empty.
 Say that plainly rather than reporting "no rows found" as if something broke.
+Confirm it with `getTableSchema` before you say it, though — an empty table
+and a renamed column look identical from a query that returns nothing.
 
 The NocoDB base itself is titled "Streams", and it also contains a table
 titled `Streams` — when it could be misread, say "the base" or name the table,
@@ -201,14 +220,31 @@ capped the read and you did not.
 **The column names are Title Case with spaces, and they are not the discovery
 endpoint's field names.** A stream's data table has:
 
-| Column | Was, in the discovery payload |
-|---|---|
-| `Company Name` | `companyName` |
-| `Relevance Reason` | `reason` |
-| `Source` | `source` |
-| `Confidence` | `confidence` |
-| `Scraped Content` | `content` |
-| `Date Added` | — |
+| Column | NocoDB type | Was, in the discovery payload |
+|---|---|---|
+| `Company Name` | SingleLineText | `companyName` |
+| `Relevance Reason` | LongText | `reason` |
+| `Source` | SingleLineText | `source` |
+| `Confidence` | Decimal | `confidence` |
+| `Scraped Content` | LongText | `content` |
+| `Date Added` | Date | — |
+
+**`Confidence` has an unresolved scale conflict — do not assume either
+scale.** Three things disagree, all verified 2026-08-11:
+
+- The discovery endpoint returns an **integer 0–100** (a real response carried
+  `"confidence": 95`).
+- This column is typed **Decimal**, which fits a 0–1 fraction as naturally as
+  a 0–100 integer.
+- The live demo stream's own `Qualification Prompt` ends with *"Return a
+  confidence score from 0 to 1"* — a third answer again.
+
+Until a real run writes rows here, nobody knows which scale actually lands in
+the column. Read a real value before applying any threshold to it, and treat
+the guidance in [docs/test-mode.md](../../../docs/test-mode.md) about the
+"below ~50" band as describing the **endpoint's** 0–100 response, not
+necessarily this column. Resolving this needs a human: either the prompt or
+the documented response scale is wrong.
 
 There is **no `relevant` column**. Only rows that passed qualification are
 written, so every row you read is already a pass. Do not filter on `relevant`
