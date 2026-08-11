@@ -201,7 +201,10 @@ never its value.
 stands between the user and money they did not mean to spend.
 
 **3. Nothing in production mode writes to NocoDB.** The base is the automated
-system's, not yours.
+system's, not yours. This rule is the only thing stopping a write — the
+connected token is write-capable and does not block `createRecords`,
+`updateRecords`, or `deleteRecords` itself. `deleteRecords` against the live
+base has no undo.
 
 **4. Test mode and production mode share nothing.** If you are reaching for
 NocoDB in test mode or the discovery endpoint in production mode, you are in

@@ -54,22 +54,39 @@ than guessed.
 
 ## NocoDB MCP (production mode)
 
-- **URL**: `https://db.goautofusion.com/mcp/<base-mcp-id>`, header
-  `xc-mcp-token`.
+- **URL**: `https://db.goautofusion.com/mcp/ncuiv55fi0t1x0em`, header
+  `xc-mcp-token` (32-char token, never printed). This id replaces the
+  stale `nc6gt1uozqt6i76m` previously written here — that one was a
+  different credential type (a NocoDB **API token**, not an **MCP
+  endpoint token**) and 404'd with `{"msg":"MCP Token not found"}`. See
+  [../troubleshooting.md](../troubleshooting.md) for how that distinction
+  surfaces on a fresh install.
+- **Status: connected.** Probed live 2026-08-10 — `initialize` → `HTTP
+  200`, `serverInfo {"name":"NoocDB MCP Server","version":"1.0.0"}`,
+  protocol `2025-06-18`. (`NoocDB` — missing the "d" — is a real typo in
+  the upstream server's own response, not an error in this doc. Leave it
+  as-is; don't "fix" it here.)
 - **Scope**: record-level only. Cannot create or alter tables, fields, or
   views.
-- **Permitted (read)**: `getBaseInfo`, `getTablesList`, `getTableSchema`,
-  `queryRecords`, `getRecord`, `countRecords`, `aggregate`,
-  `readAttachment`.
-- **Forbidden (write)**: `createRecords`, `updateRecords`,
-  `deleteRecords` — never called by this skill's procedure.
-- **Status: currently NOT connected.** The endpoint configured in
-  `credentials.env` returns `404 {"msg":"MCP Token not found"}`. The
-  credential there is a NocoDB **API token** (works as `xc-token` against
-  `/api/v2`), not an **MCP endpoint token** — two different credential
-  types from the same product. See
-  [../troubleshooting.md](../troubleshooting.md) for the fix. This is the
-  single most likely thing to be broken on a fresh install.
+- **Tools (11, from a live `tools/list`, 2026-08-10)**: `aggregate`,
+  `countRecords`, `createRecords`, `deleteRecords`, `getBaseInfo`,
+  `getRecord`, `getTableSchema`, `getTablesList`, `queryRecords`,
+  `readAttachment`, `updateRecords`.
+- **The three write tools are exposed and reachable with this
+  credential.** `createRecords`, `updateRecords`, and `deleteRecords` all
+  appear in `tools/list` and work with the same `xc-mcp-token` used for
+  reads. This NocoDB instance's MCP endpoint has no read-only variant —
+  it exposes a fixed 11-tool set per base, and any token that connects
+  gets the full set. **The token is not read-only and must never be
+  described as such.** The "production mode never writes to NocoDB"
+  property is therefore enforced entirely by this skill's own
+  prohibition (see `.claude/skills/event-streams/SKILL.md`), not by any
+  restriction on the credential.
+- **Permitted by the skill's procedure (read-only use)**: `getBaseInfo`,
+  `getTablesList`, `getTableSchema`, `queryRecords`, `getRecord`,
+  `countRecords`, `aggregate`, `readAttachment`.
+- **Never called by the skill's procedure, despite being reachable**:
+  `createRecords`, `updateRecords`, `deleteRecords`.
 - **Base**: titled `Streams`, id `p49fpgg54ke8bb9`, workspace `w5fnx5lz` —
   from `GET /api/v2/meta/bases`, 2026-08-10.
 - **Tables** — ids from `GET /api/v2/meta/bases/p49fpgg54ke8bb9/tables`,
