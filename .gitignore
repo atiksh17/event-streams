@@ -3,3 +3,4 @@ data/*
 !data/.gitkeep
 data/.runs/
 .DS_Store
+.superpowers/
