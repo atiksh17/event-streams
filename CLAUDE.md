@@ -47,7 +47,7 @@ If a task pulls you toward NocoDB while in test mode, or toward the
 discovery endpoint while in production mode, you have the wrong mode —
 stop and re-read the skill.
 
-## Four rules that must not need a lookup
+## Five rules that must not need a lookup
 
 1. **Never print a secret.** Not a key, not a token. They live in
    `.env`. To check whether one is set, print whether it's set
@@ -55,10 +55,17 @@ stop and re-read the skill.
 2. **Job titles are asked for every single time**, before any
    production-mode spend, no exceptions. Titles from an earlier run in the
    same conversation may be *offered*, never carried over silently.
-3. **Nothing in production mode writes to NocoDB.** `createRecords`,
+3. **News publications are never enriched without their own explicit yes.**
+   The streams read news sites, so publications sweep into every batch and
+   roughly nine in ten are not leads. Flag each one, re-read its article
+   against the qualification prompt, give the user the full context, and ask
+   per row — separately from the spend confirmation. Same for *dodgy* rows,
+   where the qualifying evidence actually belongs to another company named
+   inside the article. "Enrich the rest" covers the clean rows only.
+4. **Nothing in production mode writes to NocoDB.** `createRecords`,
    `updateRecords`, and `deleteRecords` are never called — the base belongs
    to the automated daily system, not to a one-off enrichment run.
-4. **Test mode and production mode share nothing.** Each touches exactly
+5. **Test mode and production mode share nothing.** Each touches exactly
    one external system. Reaching for the other's system means the task has
    been misread.
 

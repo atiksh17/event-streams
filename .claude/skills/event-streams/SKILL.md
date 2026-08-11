@@ -104,14 +104,19 @@ front rather than three more runs.
 
 ### When the user is happy
 
-Print the row for them to add to the `Streams` table:
+Print the row for them to add to the `Streams` table, using that table's own
+column names rather than the request's field names:
 
-    keywords:            <the winning keywords>
-    qualificationPrompt: <the winning prompt>
-    sources:             <the sources that run used, exactly as spelled>
+    Keywords:             <the winning keywords>
+    Qualification Prompt: <the winning prompt>
+    Sources:              <the sources that run used, exactly as spelled>
 
-Give the sources even if `Streams` has no field for them — the result the
-user is about to schedule came from those sources and no others.
+`Streams` **has** a `Sources` column — a multi-value field holding the same
+exact strings the request uses, for example
+`["Google News", "LinkedIn", "Justgiving"]`. Verified live 2026-08-11. Put the
+sources in it; they are not an aside to mention in passing. The result the
+user is about to schedule came from those sources and no others, and a row
+saved without them will run against the wrong ones.
 
 **You do not write this row.** A row in `Streams` means "run this every day,
 forever" — that is the user's decision to make in NocoDB, not a side effect of
@@ -153,14 +158,28 @@ Ask which stream, and which rows. The user can see the base and you cannot —
 their answer is authoritative. "The new ones" is a valid answer; ask them
 which ones those are.
 
-Read the `Streams` table first and show what exists. Each row carries
-`Stream Name`, `Status`, `Table ID`, `Job Titles`, `Keywords` and running
-totals (`Total Found`, `Total Passed`, `Total Contacts`, `Valid Emails`,
-`Cost`). That one read tells you what the streams are, which are live, where
-each one's data lives, and what it has already cost.
+Read the `Streams` table first and show what exists. The full column list,
+verified live 2026-08-11, is wider than the handful you usually need:
+
+- **Identity and config** — `Stream Name`, `Stream Description`, `Keywords`,
+  `Qualification Prompt`, `Sources`, `Job Titles`, `Max Results`, `Lookback`
+- **Where the data lives** — `Table ID`
+- **State** — `Status`, `Enabled`, `Anchor`, `Last Run`, `Last Run Status`
+- **Running totals** — `Total Found`, `Total Passed`, `Total Contacts`,
+  `Valid Emails`, `Cost`
+- **Rolling counts** — `Last 24h`, `Last 3d`, `Last 7d`, `Last 1m`
+
+That one read tells you what the streams are, which are live, where each
+one's data lives, and what it has already cost.
+
+`Status` and `Enabled` are **two separate gates**, not one. A row can read
+`Enabled: 1` and still sit at `Status: draft` — that is the live demo row
+today. Do not report a stream as running on the strength of `Enabled` alone.
 
 A stream whose `Status` is `draft` has never run and its table will be empty.
 Say that plainly rather than reporting "no rows found" as if something broke.
+Confirm it with `getTableSchema` before you say it, though — an empty table
+and a renamed column look identical from a query that returns nothing.
 
 The NocoDB base itself is titled "Streams", and it also contains a table
 titled `Streams` — when it could be misread, say "the base" or name the table,
@@ -201,14 +220,26 @@ capped the read and you did not.
 **The column names are Title Case with spaces, and they are not the discovery
 endpoint's field names.** A stream's data table has:
 
-| Column | Was, in the discovery payload |
-|---|---|
-| `Company Name` | `companyName` |
-| `Relevance Reason` | `reason` |
-| `Source` | `source` |
-| `Confidence` | `confidence` |
-| `Scraped Content` | `content` |
-| `Date Added` | — |
+| Column | NocoDB type | Was, in the discovery payload |
+|---|---|---|
+| `Company Name` | SingleLineText | `companyName` |
+| `Relevance Reason` | LongText | `reason` |
+| `Source` | SingleLineText | `source` |
+| `Confidence` | Decimal | `confidence` |
+| `Scraped Content` | LongText | `content` |
+| `Date Added` | Date | — |
+
+**`Confidence` is stored 0–100, even though the stream's prompt asks for
+0–1.** Settled by the first real rows on 2026-08-11: 29 rows in the demo
+stream carry 85, 90, 95 and 100 — the endpoint's integer scale written
+straight through. Two things suggest otherwise and both are misleading: the
+column's `Decimal` type, and the live stream's own `Qualification Prompt`,
+which still ends *"Return a confidence score from 0 to 1"*. Trust the stored
+values.
+
+The 0–100 bands in [docs/test-mode.md](../../../docs/test-mode.md) therefore
+read straight against these rows. Correcting the stale 0–1 instruction in the
+stream's prompt is a human's job in NocoDB, which this skill never writes.
 
 There is **no `relevant` column**. Only rows that passed qualification are
 written, so every row you read is already a pass. Do not filter on `relevant`
@@ -219,7 +250,62 @@ Verified live against the base on 2026-08-11. If a read returns nothing where
 you expected rows, re-check the schema with `getTableSchema` before assuming
 the table is empty — a renamed column looks exactly like no data.
 
-### 3. Ask for the job titles
+### 3. Screen for news publications and dodgy rows
+
+The streams read Google News and LinkedIn, so **news publications sweep into
+the results**. They are the most common wrong row in any batch, and enriching
+one spends money chasing contacts at a company that was never a lead.
+
+Before anything is spent, sort the rows into three buckets, then show the user
+what you found.
+
+**Clean** — an ordinary company. These enrich on the user's go-ahead like any
+other row, with no extra question.
+
+**News publication** — the `Company Name` is a newspaper, magazine, trade
+title, broadcaster, wire service or business-news outlet. Never enrich one on
+the strength of the row alone. Re-read that row's `Scraped Content` against
+the stream's `Qualification Prompt` and work out whether the article genuinely
+qualifies **the publication itself**.
+
+**Dodgy** — the article does describe something qualifying, but what it
+describes belongs to a *different* company mentioned inside it. The
+publication is on the list because it wrote the piece, not because it did the
+thing. Also treat as dodgy any `Company Name` that is not really a company: a
+team, a facility, a department, a job function.
+
+About nine in ten news publications are not leads. That is a base rate, not a
+reason to skip the reading — the tenth is real. A publication whose own staff
+rode in the event qualifies exactly as well as any other employer, and a
+newsroom that organises a corporate challenge is a legitimate target.
+
+**Every flagged row needs its own confirmation, and that is a separate
+question from the spend confirmation in step 5.** Never fold the two together
+and never decide on the user's behalf. Give the full context — the name, why
+it was flagged, what the article actually says, and which company the evidence
+really points at — then ask, one row at a time:
+
+> `Business News` is a news publication. Its article describes its own CEO
+> riding in the corporate cycling challenge it runs, so it may genuinely
+> qualify on its own account. Enrich it, or skip it?
+
+> `Doximity` is dodgy. It appears only as a tag in an article about staff at
+> other healthcare organisations riding — the evidence points at them, not at
+> Doximity. Enrich it, or skip it?
+
+Wait for an answer on each one. "Enrich everything that isn't a news
+publication" answers for the clean bucket only; the flagged rows still need
+their own yes. A blanket approval given before the flags were shown is not
+consent to spend on them.
+
+Report the buckets before you ask:
+
+    29 rows
+    24 clean
+    4 news publications (Business News ×4)
+    1 dodgy (Doximity — appears only as a tag)
+
+### 4. Ask for the job titles
 
 **Every run. Before anything is spent. No exceptions.**
 
@@ -239,13 +325,15 @@ mean to spend.
 Never carry titles over silently from an earlier run in the same conversation,
 and never infer them from the table's contents.
 
-### 4. Confirm the spend
+### 5. Confirm the spend
 
-State it plainly and wait:
+State it plainly and wait. Say what is included, and name anything flagged in
+step 3 that the user agreed to keep, so the total is never a surprise:
 
-> 38 companies × 3 job titles. Enriching now?
+> 24 clean companies, plus `Business News` which you approved, × 3 job titles.
+> Enriching now?
 
-### 5. Enrich
+### 6. Enrich
 
 Per company, then per person — this is what makes failure isolate to one
 record instead of aborting the batch:
@@ -296,7 +384,7 @@ while `company.link.linkedin` and `position_groups[].company.url` are the
 *company's*. Writing a company URL into `linkedin_url` is a silent, plausible
 wrong answer.
 
-### 6. Write the CSV
+### 7. Write the CSV
 
 `data/<table-slug>-YYYY-MM-DD.csv`, unless the user has said they want
 something else — in which case theirs wins and you do not argue.
@@ -305,13 +393,17 @@ Columns: `company`, `person_name`, `job_title`, `email`, `linkedin_url`,
 `source_table`, `enriched_at`. One row per person. Companies that returned
 nobody appear in the report, not as blank rows.
 
-### 7. Report honestly
+### 8. Report honestly
 
     38 companies in
     91 people out
     64 with an email (70%)
     88 with a LinkedIn (97%)
     6 companies returned nobody
+    5 skipped as news publications or dodgy (not enriched, not charged)
+
+Rows skipped at step 3 belong in the report. A company that was screened out
+must never be indistinguishable from one that was searched and found nobody.
 
 If coverage is poor, say so and say why. Do not round it up and do not present
 a thin result as a good one.
@@ -324,6 +416,12 @@ never its value.
 
 **2. Job titles are asked for every single time.** It is the one question that
 stands between the user and money they did not mean to spend.
+
+**2b. News publications and dodgy rows are never enriched without their own
+explicit yes.** The sources are news sites, so publications sweep in; about
+nine in ten are not leads. Flag each one, re-read its article against the
+qualification prompt, hand the user the full context, and ask per row. A
+blanket "enrich the rest" covers the clean rows only.
 
 **3. Nothing in production mode writes to NocoDB.** The base is the automated
 system's, not yours. This rule is the only thing stopping a write — the
