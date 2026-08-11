@@ -233,6 +233,34 @@ the resolvers when a run also filters by industry or region.
 A company where `people_search` returns nobody is not a failure. Move on and
 record why (see the report below).
 
+**The record shape, verified live on 2026-08-11.** A `people_search` hit is
+deeply nested — none of the CSV fields sit at the top level, so read them from
+these paths rather than guessing:
+
+| CSV column | Path on a `people_search` record |
+|---|---|
+| `person_name` | `profile.full_name` (also `profile.first_name` / `last_name`) |
+| `job_title` | `profile.title`, falling back to `profile.headline` |
+| `linkedin_url` | `link.linkedin` |
+| `email` | **not present** — see below |
+| `company` | the `Company Name` from the NocoDB row you started with |
+
+Top-level keys on a hit: `id`, `identifier`, `profile`, `link`, `location`,
+`languages`, `industry`, `position_groups`, `skills`, `member_badges`,
+`statistics`, `company`, `department`, `last_updated`. Some records also carry
+`educations`, `awards`, `volunteer_experiences` — treat every one of these as
+optional and never assume a key exists.
+
+**`people_search` returns no email whatsoever.** Not at the top level, not
+under `profile`, not under `link`. This is why the second call exists: the
+email comes only from `export_single`. If you find yourself reporting emails
+after a search alone, you have invented them.
+
+Watch the two similar link fields: `link.linkedin` is the *person's* profile,
+while `company.link.linkedin` and `position_groups[].company.url` are the
+*company's*. Writing a company URL into `linkedin_url` is a silent, plausible
+wrong answer.
+
 ### 6. Write the CSV
 
 `data/<table-slug>-YYYY-MM-DD.csv`, unless the user has said they want
