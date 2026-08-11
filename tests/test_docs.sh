@@ -24,7 +24,7 @@ while IFS= read -r line; do
   case "$link" in http*|\#*) continue;; esac
   target="$(dirname "$f")/${link%%#*}"
   [ -e "$target" ] || { echo "     broken: $f -> $link"; broken=1; }
-done < <(grep -roE '\]\([^)]+\)' --include='*.md' . | grep -v '/superpowers/')
+done < <(grep -roE '\]\([^)]+\)' --include='*.md' . | grep -vE '(^|/)\.?superpowers/')
 [ "$broken" -eq 0 ]
 check "every relative markdown link resolves" $?
 

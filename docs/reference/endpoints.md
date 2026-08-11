@@ -29,7 +29,7 @@ than guessed.
   token is a **query parameter**, not a header.
 - **Status**: connected and verified working.
 - **Server info**: `serverInfo {name: "mcp", version: "1.0.0"}`, protocol
-  `2025-06-18`.
+  `2025-06-18` — from a live `initialize` call, 2026-08-10.
 - **Tools (11)**: `company_search`, `people_search`, `email_finder`,
   `email_finder_results`, `export_single`, `reverse_people_lookup`,
   `mobile_phone_finder`, `personality_analysis`, `industry_search`,
@@ -39,8 +39,9 @@ than guessed.
   skill's procedure uses.
 - `export_single` is **synchronous**, keyed by an AI Ark `id` or a
   LinkedIn `url`. This is the path the skill uses, once per person.
-- `people_search` takes 97 arguments in total. The ones this skill's
-  procedure actually uses: `title` (positive job-title filter),
+- `people_search` takes 97 arguments in total (counted from `tools/list`
+  against the live server, 2026-08-10 — not a remembered figure). The ones
+  this skill's procedure actually uses: `title` (positive job-title filter),
   `excludeTitle`, `previousTitle` (past roles, not current), `seniority`
   (fixed enum: `c_suite, vp, director, manager, senior, mid-level, entry`
   — no lookup needed), `companyName`, `companyNameOrDomain`.
@@ -69,8 +70,10 @@ than guessed.
   types from the same product. See
   [../troubleshooting.md](../troubleshooting.md) for the fix. This is the
   single most likely thing to be broken on a fresh install.
-- **Base**: titled `Streams`, id `p49fpgg54ke8bb9`, workspace `w5fnx5lz`.
-- **Tables**:
+- **Base**: titled `Streams`, id `p49fpgg54ke8bb9`, workspace `w5fnx5lz` —
+  from `GET /api/v2/meta/bases`, 2026-08-10.
+- **Tables** — ids from `GET /api/v2/meta/bases/p49fpgg54ke8bb9/tables`,
+  2026-08-10:
   - `Streams` — id `mfo88n8n35b9qvl`. The scheduler; read it to see what's
     running. Never an enrichment target.
   - `Demo Stream — Dealership Group Expansions` — id `m52q1ugrrytkoov`. A
