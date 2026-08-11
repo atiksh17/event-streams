@@ -9,7 +9,15 @@ cd "$(dirname "$0")"
 # from any folder rather than only the one it was first set up in.
 REPO_DIR="$(pwd)"
 
-CREDENTIALS_FILE="${CREDENTIALS_FILE:-./credentials.env}"
+# Credentials live in .env at the repo root - the one place every agent looks.
+# credentials.env is the old name, still honoured so an existing checkout does
+# not break on upgrade.
+if [ -z "${CREDENTIALS_FILE:-}" ]; then
+  if   [ -r ./.env ];            then CREDENTIALS_FILE=./.env
+  elif [ -r ./credentials.env ]; then CREDENTIALS_FILE=./credentials.env
+  else                                CREDENTIALS_FILE=./.env
+  fi
+fi
 CONFIGS_ONLY=0
 [ "${1:-}" = "--configs-only" ] && CONFIGS_ONLY=1
 
@@ -84,7 +92,7 @@ echo "event-streams setup"
 echo
 
 # ---- 1. credentials -------------------------------------------------------
-[ -r "$CREDENTIALS_FILE" ] || die "no credentials file at $CREDENTIALS_FILE. Copy credentials.env.example to credentials.env and fill it in."
+[ -r "$CREDENTIALS_FILE" ] || die "no credentials file at $CREDENTIALS_FILE. Copy .env.example to .env and fill it in."
 set -a; . "$CREDENTIALS_FILE"; set +a
 
 for v in AI_ARK_API_KEY NOCODB_MCP_TOKEN NOCODB_MCP_URL DISCOVERY_URL; do

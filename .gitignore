@@ -1,4 +1,6 @@
-.env
+# .env is deliberately NOT ignored in this repo. It is the single place every
+# agent looks for credentials, and this repo is private by design so the keys
+# ship with it. If you fork this pattern into a public repo, put .env back.
 data/*
 !data/.gitkeep
 data/.runs/

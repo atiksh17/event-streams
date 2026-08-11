@@ -105,12 +105,21 @@ Reads NocoDB via the `nocodb-streams` MCP server, enriches via the `ai-ark`
 MCP server. Never writes to either. Two different agent harnesses run this
 skill; both are configured with servers of these same two names.
 
-**On Codex, step 5 (enrich) will fail** — AI Ark's MCP server has a known
-upstream bug where Codex's client can't consume its response shape (see
-[docs/troubleshooting.md](../../../docs/troubleshooting.md), `Transport
-channel closed`). Reading NocoDB and test mode both still work from Codex.
-If you're running as Codex, say this up front and switch to Claude Code
-before reading any rows for enrichment.
+**On Codex, step 5 (enrich) will fail.** AI Ark's MCP server has a known
+upstream bug that Codex's client cannot tolerate — it surfaces as `Transport
+channel closed`, or as a tool call reporting
+`tools.mcp__ai_ark__… is not a function`. Reading NocoDB and test mode both
+still work from Codex.
+
+If you are running as Codex: **say so before reading any rows**, not after.
+Point the user at
+[docs/codex-ai-ark-setup.md](../../../docs/codex-ai-ark-setup.md) — it explains
+the cause, the workarounds, and how to check whether it has been fixed — and
+offer the one-step fix, which is to open this same folder in Claude Code. Same
+skill, same `.env`, nothing to reconfigure.
+
+Do not attempt the workarounds unprompted. One of them edits the user's global
+Codex configuration, and that is their call.
 
 ### 1. Find out what to enrich
 
@@ -284,7 +293,7 @@ a thin result as a good one.
 ## Rules that must not need a lookup
 
 **1. Never print a secret.** Not a key, not a token. They live in
-`credentials.env`. To check one, print whether it is set and how long it is —
+`.env`. To check one, print whether it is set and how long it is —
 never its value.
 
 **2. Job titles are asked for every single time.** It is the one question that

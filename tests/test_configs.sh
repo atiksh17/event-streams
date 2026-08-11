@@ -6,11 +6,11 @@ check() { if [ "$2" -eq 0 ]; then echo "  ok   - $1"; else echo "  FAIL - $1"; f
 
 echo "configs:"
 
-[ -f credentials.env ]
-check "credentials.env exists" $?
+[ -f .env ]
+check ".env exists" $?
 
 # shellcheck disable=SC1091
-set -a; . ./credentials.env 2>/dev/null; set +a
+set -a; . ./.env 2>/dev/null; set +a
 
 for v in AI_ARK_API_KEY NOCODB_MCP_TOKEN NOCODB_MCP_URL DISCOVERY_URL; do
   [ -n "${!v:-}" ]
@@ -46,7 +46,7 @@ check ".codex/config.toml uses http_headers for the NocoDB token" $?
 python3 -c 'import json; assert json.load(open(".claude/settings.json"))["enableAllProjectMcpServers"] is True' 2>/dev/null
 check ".claude/settings.json auto-approves project MCP servers" $?
 
-grep -q '^credentials.env.example$' .gitignore && exit_bad=1 || exit_bad=0
+grep -q '^.env.example$' .gitignore && exit_bad=1 || exit_bad=0
 [ "$exit_bad" -eq 0 ]
 check "the .example file is NOT gitignored" $?
 
