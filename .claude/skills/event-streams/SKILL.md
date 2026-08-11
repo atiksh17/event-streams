@@ -185,13 +185,39 @@ The NocoDB base itself is titled "Streams", and it also contains a table
 titled `Streams` — when it could be misread, say "the base" or name the table,
 not just "Streams".
 
-`Streams` and `Template (DO NOT TOUCH)` are never enrichment targets.
-`Streams` is the scheduler — read it to list what is running. `Template (DO
-NOT TOUCH)` is reserved — never read it, never write it, never offer it.
-Every other table (for example `Demo Stream — Dealership Group Expansions`)
-is an individual stream and a valid target. New stream tables appear over
-time, so the rule is "not `Streams`, not `Template (DO NOT TOUCH)`" — never a
-fixed list you memorize.
+#### Two critical tables — read only, never modified, never deleted
+
+| Table | Id | What it is |
+|---|---|---|
+| `Streams` | `mfo88n8n35b9qvl` | The scheduler. One row per stream. Read it to list what is running. Never an enrichment target. |
+| `Template (DO NOT TOUCH)` | `m0liglo73sxjwa8` | Reserved. Never read it, never write it, never offer it as a target. |
+
+Every other table in the base is the data table of one individual stream — for
+example `Demo Stream — Dealership Group Expansions` — and each is a valid
+enrichment target. New ones appear over time, so the rule is "not `Streams`,
+not `Template (DO NOT TOUCH)`", never a fixed list you memorize. Check the ids
+as well as the names: a table can be renamed, and then a name-only check stops
+protecting it.
+
+#### How a stream and its table are linked
+
+**Each row in `Streams` corresponds to exactly one data table, and the link is
+the `Table ID` column.** That column on a stream's row holds the id of that
+stream's own table. It is the only reliable route from a stream to its data.
+Never guess a table name from a stream name and never pair them up by eye —
+read `Streams`, match on `Stream Name`, take `Table ID`, query that id.
+
+**How that table comes into existence.** A row in `Streams` needs `Keywords`,
+`Qualification Prompt` and `Sources` filled in, and `Enabled` set true. The
+automated system then creates that stream's data table, names it after the
+stream, and writes the new table's id back into the `Table ID` column of that
+row in `Streams`.
+
+All of that is the automated system's work, not yours. This skill never
+creates a table, never fills in a stream's config, and never sets `Enabled` —
+see rule 4. A row whose `Table ID` is empty is a stream whose table has not
+been created yet; say that plainly rather than hunting for a table that does
+not exist.
 
 ### 2. Read the rows
 

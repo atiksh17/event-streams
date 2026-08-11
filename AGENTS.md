@@ -64,7 +64,13 @@ stop and re-read the skill.
    inside the article. "Enrich the rest" covers the clean rows only.
 4. **Nothing in production mode writes to NocoDB.** `createRecords`,
    `updateRecords`, and `deleteRecords` are never called — the base belongs
-   to the automated daily system, not to a one-off enrichment run.
+   to the automated daily system, not to a one-off enrichment run. Two
+   tables are critical and read-only in the strongest sense — never
+   modified, never deleted: **`Streams`** (`mfo88n8n35b9qvl`), the
+   scheduler, one row per stream; and **`Template (DO NOT TOUCH)`**
+   (`m0liglo73sxjwa8`), which is never even read. Every other table is one
+   stream's data, reached through the `Table ID` column of that stream's
+   row — never by guessing its name.
 5. **Test mode and production mode share nothing.** Each touches exactly
    one external system. Reaching for the other's system means the task has
    been misread.

@@ -128,14 +128,30 @@ Where a value hasn't been confirmed against a real run yet, it's marked
   from `GET /api/v2/meta/bases`, 2026-08-10.
 - **Tables** — ids from `GET /api/v2/meta/bases/p49fpgg54ke8bb9/tables`,
   2026-08-10:
-  - `Streams` — id `mfo88n8n35b9qvl`. The scheduler; read it to see what's
-    running. Never an enrichment target.
+  - `Streams` — id `mfo88n8n35b9qvl`. **Critical.** The scheduler; read it to
+    see what's running. Read-only: never modified, never deleted, never an
+    enrichment target.
+  - `Template (DO NOT TOUCH)` — id `m0liglo73sxjwa8`. **Critical.** Reserved
+    — never read, never write, never delete, never offer as a target.
   - `Demo Stream — Dealership Group Expansions` — id `m52q1ugrrytkoov`. A
     real stream and a valid enrichment target.
-  - `Template (DO NOT TOUCH)` — id `m0liglo73sxjwa8`. Reserved — never
-    read, never write, never offer as a target.
   - New stream tables appear over time. The rule is "not `Streams`, not
-    `Template (DO NOT TOUCH)`" — never a fixed list to memorize.
+    `Template (DO NOT TOUCH)`" — never a fixed list to memorize. Match on
+    the two ids above as well as the names, since a rename would defeat a
+    name-only check.
+- **Every other table is one stream's data table, linked by `Table ID`.** A
+  row in `Streams` holds its own table's id in the `Table ID` column — that
+  is the only reliable route from a stream to its rows. Confirmed live
+  2026-08-11: the single `Streams` row carries `Table ID`
+  `m52q1ugrrytkoov`, which is the demo stream's table.
+- **Stream-table lifecycle.** A `Streams` row needs `Keywords`,
+  `Qualification Prompt` and `Sources` set, and `Enabled` true. The automated
+  system then creates the stream's data table, names it after the stream, and
+  writes that table's id back into the `Table ID` column of the row in
+  `Streams`. Table creation, config, and `Enabled` all belong to the
+  automated system — this skill does none of them, and the MCP endpoint
+  could not create a table anyway (its scope is record-level only, see
+  above). An empty `Table ID` means the table does not exist yet.
 - **`Streams` columns** — from a live `queryRecords` against
   `mfo88n8n35b9qvl`, 2026-08-11. Wider than the skill previously described:
   `Stream Name`, `Stream Description`, `Keywords`, `Qualification Prompt`,
