@@ -19,6 +19,66 @@ warn()    { printf '  \033[33mskip\033[0m %s\n' "$*"; }
 caution() { printf '  \033[33mwarn\033[0m %s\n' "$*"; }
 die()     { printf '\n  \033[31mfailed\033[0m %s\n\n' "$*" >&2; exit 1; }
 
+# Codex's rmcp streamable-HTTP client requires an SSE reply. A server that
+# answers with anything else kills it with "Transport channel closed" even
+# though the server is healthy - Claude Code tolerates the deviation. This
+# sends a real (free, unbilled) MCP `initialize` with the Accept header Codex
+# sends, and classifies the reply.
+#
+# $1 = server label, $2 = url, remaining args = extra curl -H flags.
+# Sets rc=1 on a genuine failure; sets codex_stream_warned=1 on the SSE quirk.
+probe_codex_stream_compat() {
+  local name="$1" url="$2" hdrs status ctype_line ctype
+  shift 2
+  hdrs=$(curl -s -D - -o /dev/null -m 15 -X POST "$url" \
+    -H 'Content-Type: application/json' \
+    -H 'Accept: application/json, text/event-stream' \
+    "$@" \
+    -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"event-streams-setup","version":"1.0"}}}' \
+    2>/dev/null) || hdrs=""
+  status=$(printf '%s\n' "$hdrs" | awk 'NR==1{print $2}')
+  if [ -z "$status" ]; then
+    printf '  \033[31mFAIL\033[0m codex %s did not answer the probe at all (connection failed)\n' "$name"
+    rc=1
+    return
+  fi
+  # `|| true` is load-bearing: under `set -euo pipefail` a grep that matches
+  # nothing exits 1, pipefail propagates it, and the whole script dies here
+  # with no output at all. A response with no content-type header is not
+  # hypothetical - a bare 502 from a fronting proxy has exactly that shape.
+  ctype_line=$(printf '%s\n' "$hdrs" | tr -d '\r' | grep -i '^content-type:' | head -1 || true)
+  ctype=$(printf '%s\n' "$ctype_line" | cut -d: -f2- | tr -d ' ' | tr '[:upper:]' '[:lower:]')
+
+  # Status first. A non-2xx is a genuine failure and must not be excused as
+  # the known SSE quirk - a wrong NocoDB token also answers with
+  # content-type: application/json, and reporting that as "an upstream bug,
+  # not a config problem" would send someone hunting the wrong thing.
+  case "$status" in
+    2*) ;;
+    *)
+      printf '  \033[31mFAIL\033[0m codex %s answered HTTP %s - that is a real failure, not the SSE quirk. Check the credential and URL for this server.\n' "$name" "$status"
+      rc=1
+      return
+      ;;
+  esac
+
+  case "$ctype" in
+    text/event-stream*)
+      ok "codex $name answers with text/event-stream - Codex's client can use this server"
+      ;;
+    *)
+      caution "codex $name answers HTTP $status with content-type '${ctype:-none}', not text/event-stream. Codex's rmcp client requires an SSE reply and dies with \"Transport channel closed\" against servers that answer this way. Observed for AI Ark on 2026-08-11 and reported as an upstream server bug; retest before assuming it still holds. Claude Code is unaffected. See docs/troubleshooting.md."
+      codex_stream_warned=1
+      ;;
+  esac
+}
+
+# Let the test suite source this file to reach the functions above without
+# running an install. Nothing below this line executes when sourced this way.
+if [ "${EVENT_STREAMS_SOURCE_ONLY:-}" = "1" ]; then
+  return 0 2>/dev/null || exit 0
+fi
+
 echo
 echo "event-streams setup"
 echo
@@ -231,57 +291,6 @@ if command -v codex >/dev/null 2>&1; then
 
   say "codex: probing whether each server actually answers with an SSE stream (what Codex's client requires)..."
 
-  probe_codex_stream_compat() {
-    # $1 = server label, $2 = url, remaining args = extra curl -H flags.
-    # Sends a real (free, unbilled) MCP `initialize` call with the Accept
-    # header Codex sends, then checks the reply's content-type. A server
-    # that answers with anything other than text/event-stream will make
-    # Codex's rmcp client die with "Transport channel closed" even though
-    # the server itself is healthy - Claude Code tolerates the deviation.
-    local name="$1" url="$2" hdrs status ctype_line ctype
-    shift 2
-    hdrs=$(curl -s -D - -o /dev/null -m 15 -X POST "$url" \
-      -H 'Content-Type: application/json' \
-      -H 'Accept: application/json, text/event-stream' \
-      "$@" \
-      -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"event-streams-setup","version":"1.0"}}}' \
-      2>/dev/null) || hdrs=""
-    status=$(printf '%s\n' "$hdrs" | awk 'NR==1{print $2}')
-    if [ -z "$status" ]; then
-      printf '  \033[31mFAIL\033[0m codex %s did not answer the probe at all (connection failed)\n' "$name"
-      rc=1
-      return
-    fi
-    # `|| true` is load-bearing: under `set -euo pipefail` a grep that matches
-    # nothing exits 1, pipefail propagates it, and the whole script dies here
-    # with no output at all. A response with no content-type header is not
-    # hypothetical - a bare 502 from a fronting proxy has exactly that shape.
-    ctype_line=$(printf '%s\n' "$hdrs" | tr -d '\r' | grep -i '^content-type:' | head -1 || true)
-    ctype=$(printf '%s\n' "$ctype_line" | cut -d: -f2- | tr -d ' ' | tr '[:upper:]' '[:lower:]')
-
-    # Status first. A non-2xx is a genuine failure and must not be excused as
-    # the known SSE quirk - a wrong NocoDB token also answers with
-    # content-type: application/json, and reporting that as "an upstream bug,
-    # not a config problem" would send someone hunting the wrong thing.
-    case "$status" in
-      2*) ;;
-      *)
-        printf '  \033[31mFAIL\033[0m codex %s answered HTTP %s - that is a real failure, not the SSE quirk. Check the credential and URL for this server.\n' "$name" "$status"
-        rc=1
-        return
-        ;;
-    esac
-
-    case "$ctype" in
-      text/event-stream*)
-        ok "codex $name answers with text/event-stream - Codex's client can use this server"
-        ;;
-      *)
-        caution "codex $name answers HTTP $status with content-type '${ctype:-none}', not text/event-stream. Codex's rmcp client requires an SSE reply and dies with \"Transport channel closed\" against servers that answer this way. Observed for AI Ark on 2026-08-11 and reported as an upstream server bug; retest before assuming it still holds. Claude Code is unaffected. See docs/troubleshooting.md."
-        codex_stream_warned=1
-        ;;
-    esac
-  }
 
   probe_codex_stream_compat "ai-ark" "$AI_ARK_URL"
   probe_codex_stream_compat "nocodb-streams" "$NOCODB_MCP_URL" -H "xc-mcp-token: ${NOCODB_MCP_TOKEN}"
