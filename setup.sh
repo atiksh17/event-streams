@@ -5,6 +5,10 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# Absolute path of this clone. Everything is scoped to it, so the repo works
+# from any folder rather than only the one it was first set up in.
+REPO_DIR="$(pwd)"
+
 CREDENTIALS_FILE="${CREDENTIALS_FILE:-./credentials.env}"
 CONFIGS_ONLY=0
 [ "${1:-}" = "--configs-only" ] && CONFIGS_ONLY=1
@@ -86,42 +90,89 @@ else
 fi
 
 # ---- 4. Claude Code -------------------------------------------------------
+# --scope local, NOT --scope user. Local stores the servers under
+# projects.<this repo>.mcpServers in the user's own config, so they exist in
+# this folder and nowhere else. --scope user would put them in every
+# directory on the machine and, worse, would mask a broken project-scoped
+# install in every later test.
+#
+# We deliberately do NOT rely on the repo's own .mcp.json. Claude treats
+# repo-supplied MCP config as untrusted and holds it at "Pending approval"
+# until a human approves it interactively - verified against
+# enableAllProjectMcpServers, enabledMcpjsonServers in settings.json and
+# settings.local.json, and a hand-written projects.<path>.enabledMcpjsonServers
+# in .claude.json. All four still showed Pending. That gate is deliberate: a
+# cloned repo silently gaining live MCP servers would be a supply-chain hole.
+# .mcp.json stays in the repo as a fallback for anyone who wants to approve it
+# by hand.
 if command -v claude >/dev/null 2>&1; then
-  claude mcp remove ai-ark        -s user >/dev/null 2>&1 || true
-  claude mcp remove nocodb-streams -s user >/dev/null 2>&1 || true
-  claude mcp add --transport http --scope user ai-ark "$AI_ARK_URL" >/dev/null
-  claude mcp add --transport http --scope user nocodb-streams "$NOCODB_MCP_URL" \
+  # Upgrade path: strip the global entries older versions of this script
+  # installed, or they shadow the project-scoped ones and nobody can tell
+  # which is actually in play.
+  removed_user=0
+  for s in ai-ark nocodb-streams; do
+    if claude mcp remove "$s" -s user >/dev/null 2>&1; then removed_user=1; fi
+  done
+  [ "$removed_user" -eq 1 ] && say "removed stale user-scope Claude entries from a previous install"
+
+  for s in ai-ark nocodb-streams; do
+    claude mcp remove "$s" -s local >/dev/null 2>&1 || true
+  done
+  claude mcp add --transport http --scope local ai-ark "$AI_ARK_URL" >/dev/null
+  claude mcp add --transport http --scope local nocodb-streams "$NOCODB_MCP_URL" \
     --header "xc-mcp-token: ${NOCODB_MCP_TOKEN}" >/dev/null
-  ok "claude: ai-ark + nocodb-streams installed at user scope"
+  ok "claude: ai-ark + nocodb-streams installed at PROJECT scope ($REPO_DIR)"
 else
   warn "claude not on PATH - skipping Claude Code install"
 fi
 
 # ---- 5. Codex -------------------------------------------------------------
+# The MCP servers live in this repo's own .codex/config.toml (written in step
+# 2). Codex ignores that file entirely until the project is trusted, so the
+# only thing we write globally is a one-line trust declaration for this path.
+# Verified: with an isolated CODEX_HOME and 3 [mcp_servers.*] blocks sitting in
+# the project file, `codex mcp list` reported "No MCP servers configured yet"
+# until the trust entry existed.
 if command -v codex >/dev/null 2>&1; then
   CODEX_CFG="${CODEX_HOME:-$HOME/.codex}/config.toml"
   mkdir -p "$(dirname "$CODEX_CFG")"; touch "$CODEX_CFG"
-  python3 - "$CODEX_CFG" "$AI_ARK_URL" "$NOCODB_MCP_URL" "$NOCODB_MCP_TOKEN" <<'PY'
+  codex_cleanup=$(python3 - "$CODEX_CFG" "$REPO_DIR" <<'PY'
 import re, sys
-path, ark, nocodb_url, nocodb_tok = sys.argv[1:5]
+path, repo = sys.argv[1:3]
 text = open(path).read()
-# Drop any previous blocks we own, then append fresh ones. Idempotent.
-text = re.sub(r"\n?# >>> event-streams >>>.*?# <<< event-streams <<<\n?", "\n", text, flags=re.S)
-block = f'''
-# >>> event-streams >>>
-[mcp_servers.ai-ark]
-url = "{ark}"
+original = text
 
-[mcp_servers.nocodb-streams]
-url = "{nocodb_url}"
+# Upgrade path: older versions of this script appended global [mcp_servers.*]
+# blocks here. Those shadow the project-scoped ones, so remove them.
+text, n_removed = re.subn(
+    r"\n?# >>> event-streams >>>.*?# <<< event-streams <<<\n?", "\n", text, flags=re.S)
 
-[mcp_servers.nocodb-streams.http_headers]
-"xc-mcp-token" = "{nocodb_tok}"
-# <<< event-streams <<<
-'''
-open(path, "w").write(text.rstrip("\n") + "\n" + block)
+header = f'[projects."{repo}"]'
+if header in text:
+    # Section already exists (Codex writes one when a user trusts a repo
+    # interactively). Add trust_level inside it only if absent - never append a
+    # duplicate table header, which would make the file unparseable.
+    start = text.index(header) + len(header)
+    nxt = re.search(r"\n\[", text[start:])
+    end = start + (nxt.start() if nxt else len(text) - start)
+    section = text[start:end]
+    if re.search(r"^\s*trust_level\s*=", section, flags=re.M):
+        section = re.sub(r"^\s*trust_level\s*=.*$", 'trust_level = "trusted"',
+                         section, count=1, flags=re.M)
+    else:
+        section = '\ntrust_level = "trusted"' + section
+    text = text[:start] + section + text[end:]
+else:
+    text = text.rstrip("\n") + f'\n\n{header}\ntrust_level = "trusted"\n'
+
+if text != original:
+    open(path, "w").write(text)
+print("removed_global_blocks" if n_removed else "", end="")
 PY
-  ok "codex: ai-ark + nocodb-streams written to $CODEX_CFG"
+)
+  [ "$codex_cleanup" = "removed_global_blocks" ] && \
+    say "removed stale global Codex [mcp_servers.*] blocks from a previous install"
+  ok "codex: project trusted, servers read from this repo's .codex/config.toml"
 else
   warn "codex not on PATH - skipping Codex install"
 fi
@@ -130,12 +181,29 @@ fi
 echo
 say "verifying..."
 rc=0
+# A scratch cwd with no project config of its own. Listing the servers from
+# here is how we prove they are scoped to this repo rather than installed
+# globally - "the server exists somewhere" is precisely the false green this
+# whole section exists to prevent.
+ELSEWHERE=$(mktemp -d)
+trap 'rm -rf "$ELSEWHERE"' EXIT
+
 if command -v claude >/dev/null 2>&1; then
   out=$(claude mcp list 2>&1 || true)
   for s in ai-ark nocodb-streams; do
     if echo "$out" | grep -q "^${s}:.*Connected"; then ok "claude $s connected"
     else printf '  \033[31mFAIL\033[0m claude %s did not connect\n' "$s"; rc=1; fi
   done
+  outside=$(cd "$ELSEWHERE" && claude mcp list 2>&1 || true)
+  leaked=""
+  for s in ai-ark nocodb-streams; do
+    if echo "$outside" | grep -q "^${s}:"; then leaked="$leaked $s"; fi
+  done
+  if [ -n "$leaked" ]; then
+    caution "claude:$leaked also resolve OUTSIDE this repo - something is installed at user scope. Project isolation is not holding. Run: claude mcp remove <name> -s user"
+  else
+    ok "claude scope confirmed: servers resolve here and nowhere else"
+  fi
 fi
 codex_stream_warned=0
 if command -v codex >/dev/null 2>&1; then
@@ -150,6 +218,16 @@ if command -v codex >/dev/null 2>&1; then
     if echo "$out" | grep -q "$s"; then ok "codex $s registered (config presence only, not a connectivity check)"
     else printf '  \033[31mFAIL\033[0m codex %s missing from config\n' "$s"; rc=1; fi
   done
+  outside=$(cd "$ELSEWHERE" && codex mcp list 2>&1 || true)
+  leaked=""
+  for s in ai-ark nocodb-streams; do
+    if echo "$outside" | grep -q "$s"; then leaked="$leaked $s"; fi
+  done
+  if [ -n "$leaked" ]; then
+    caution "codex:$leaked also resolve OUTSIDE this repo - a global [mcp_servers.*] block is present in ${CODEX_HOME:-$HOME/.codex}/config.toml. Project isolation is not holding; remove it."
+  else
+    ok "codex scope confirmed: servers resolve here and nowhere else"
+  fi
 
   say "codex: probing whether each server actually answers with an SSE stream (what Codex's client requires)..."
 
@@ -174,14 +252,32 @@ if command -v codex >/dev/null 2>&1; then
       rc=1
       return
     fi
-    ctype_line=$(printf '%s\n' "$hdrs" | tr -d '\r' | grep -i '^content-type:' | head -1)
+    # `|| true` is load-bearing: under `set -euo pipefail` a grep that matches
+    # nothing exits 1, pipefail propagates it, and the whole script dies here
+    # with no output at all. A response with no content-type header is not
+    # hypothetical - a bare 502 from a fronting proxy has exactly that shape.
+    ctype_line=$(printf '%s\n' "$hdrs" | tr -d '\r' | grep -i '^content-type:' | head -1 || true)
     ctype=$(printf '%s\n' "$ctype_line" | cut -d: -f2- | tr -d ' ' | tr '[:upper:]' '[:lower:]')
+
+    # Status first. A non-2xx is a genuine failure and must not be excused as
+    # the known SSE quirk - a wrong NocoDB token also answers with
+    # content-type: application/json, and reporting that as "an upstream bug,
+    # not a config problem" would send someone hunting the wrong thing.
+    case "$status" in
+      2*) ;;
+      *)
+        printf '  \033[31mFAIL\033[0m codex %s answered HTTP %s - that is a real failure, not the SSE quirk. Check the credential and URL for this server.\n' "$name" "$status"
+        rc=1
+        return
+        ;;
+    esac
+
     case "$ctype" in
       text/event-stream*)
         ok "codex $name answers with text/event-stream - Codex's client can use this server"
         ;;
       *)
-        caution "codex $name answers (HTTP $status) with content-type '${ctype:-none}', not text/event-stream. Codex's rmcp client requires an SSE reply and will fail on this server with \"Transport channel closed\" even though it answered - this is an upstream server bug, not a config problem. Claude Code is unaffected. See docs/troubleshooting.md."
+        caution "codex $name answers HTTP $status with content-type '${ctype:-none}', not text/event-stream. Codex's rmcp client requires an SSE reply and dies with \"Transport channel closed\" against servers that answer this way. Observed for AI Ark on 2026-08-11 and reported as an upstream server bug; retest before assuming it still holds. Claude Code is unaffected. See docs/troubleshooting.md."
         codex_stream_warned=1
         ;;
     esac
