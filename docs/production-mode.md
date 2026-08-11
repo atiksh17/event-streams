@@ -1,15 +1,92 @@
 # Production mode, in depth
 
 This is the long-form companion to the `## Production mode` section of the
-skill. Read the skill for the exact steps; read this when you're choosing job
-titles, deciding whether a coverage report is healthy, or wondering why the
-skill hands you a CSV instead of writing straight back into the table you
-just read.
+skill. Read the skill for the exact steps; read this when you're screening a
+batch for news publications, choosing job titles, deciding whether a coverage
+report is healthy, or wondering why the skill hands you a CSV instead of
+writing straight back into the table you just read.
 
 Production mode is not exploratory the way test mode is. Every call to AI Ark
 costs money, and there's no "just try it and see" — the job-title question
 exists precisely so that the only expensive step happens once you've actually
 decided what you want.
+
+## News publications, and why they need their own gate
+
+The streams read Google News and LinkedIn. That means the pipeline is looking
+at articles and posts, and the thing that writes an article is a news
+publication — so publications end up on the list as though they were leads.
+This is structural, not a bug in the qualification prompt. No amount of prompt
+tightening removes it entirely, because the publication genuinely is named in
+the content, often repeatedly.
+
+**About nine out of ten are not leads**, and enriching one buys contact
+details for a newsroom that has no interest in what you're selling. The point
+of the check isn't to delete them, though — it's the tenth one. A trade title
+whose own staff rode in a charity event is a company whose staff rode in a
+charity event, and a business-news outlet that organises a corporate cycling
+challenge is a perfectly good target. Deleting all publications on sight
+throws that away.
+
+### The three buckets
+
+**Clean.** An ordinary company. No extra question — these go ahead on the
+normal spend confirmation like anything else.
+
+**News publication.** The name is a newspaper, magazine, trade title,
+broadcaster, wire service, or business-news outlet. Go back to that row's
+`Scraped Content` and read it against the stream's `Qualification Prompt`.
+The question is narrow: does the article qualify *the publication itself*?
+A newsroom whose own employees took part qualifies. A newsroom that merely
+reported on someone else's employees does not.
+
+**Dodgy.** The article describes something that genuinely qualifies — but it
+belongs to a different company mentioned inside the piece. The publication is
+on the row because it did the writing, not the riding. This bucket also
+catches names that aren't companies at all: a team, a facility, a department,
+a job function. A row reading `Clevedon manufacturing facility` or
+`NHS Trust (Pharmacy team)` can't be searched as a company name even when the
+underlying story is real.
+
+### Why each flagged row gets its own question
+
+The spend confirmation covers scale — *38 companies × 3 titles, go?* It does
+not cover judgement about which companies belong on the list at all. Those are
+different decisions and folding them together loses the second one: a user who
+says yes to a total has not looked at the individual rows behind it.
+
+So give the full context per row and let the user decide each one. Name the
+company, say why it was flagged, say what the article actually describes, and
+say which company the evidence really points at. That last part matters most
+for the dodgy bucket — "this article is about staff at three other hospitals,
+and this company is just a tag in it" is the fact that lets someone decide in
+two seconds.
+
+A blanket instruction like *"enrich everything that isn't a news
+publication"* is a complete answer for the clean bucket and no answer at all
+for the flagged ones. Treat approval given before the flags were shown as
+approval of what was shown — which was nothing.
+
+### What this looks like in practice
+
+From a real batch of 29 rows in the demo stream, read live 2026-08-11:
+
+    29 rows
+    24 clean
+    4 news publications (Business News ×4)
+    1 dodgy (Doximity — appears only as a tag in an article about
+             other healthcare organisations' staff riding)
+
+`Business News` is the instructive one. It's a Western Australian business
+publication, so it lands in the publication bucket on sight — but reading the
+articles shows its own CEO riding in a corporate cycling challenge that the
+publication itself organises. That is a genuine qualifying signal about the
+publication, not about someone else. It's the one-in-ten case, and it would
+have been thrown away by a rule that just drops publications.
+
+Note also that it appeared four separate times, once per article. Deduplicate
+by company before you count, or you'll ask the same question four times and
+pay four times if the user says yes.
 
 ## Choosing job titles that actually return people
 
