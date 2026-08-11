@@ -31,6 +31,9 @@ check "frontmatter declares name: event-streams" $?
 [ -d data ]
 check "data/ exists" $?
 
+[ -x setup.sh ]
+check "setup.sh is executable" $?
+
 echo
 if [ "$fails" -gt 0 ]; then echo "$fails check(s) failed"; exit 1; fi
 echo "all layout checks passed"
