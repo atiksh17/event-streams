@@ -14,6 +14,17 @@ cd event-streams
 That is the whole install. Open the folder in Claude Code or Codex afterwards
 and just say what you want.
 
+It works in **any** folder, and everything it sets up stays **inside that
+folder**. Clone it twice into two directories and you get two independent
+copies — neither one changes how your agents behave anywhere else on your
+machine. Cloning gives you the skill; `./setup.sh` adds the two data
+connections it needs.
+
+One thing to know up front: the enrichment step works in Claude Code but not
+in Codex, because of a bug in one of the upstream services. Everything else
+works in both. `./setup.sh` tells you if this is still the case when you run
+it, and [docs/troubleshooting.md](docs/troubleshooting.md) explains it.
+
 ## What to say to your agent
 
 Copy this:
