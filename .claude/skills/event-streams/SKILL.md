@@ -88,7 +88,8 @@ a successful test.
 
 | What you see | What it means | What to say |
 |---|---|---|
-| `404 ... webhook "stream" is not registered` | The test URL was used | Use the production URL |
+| `404 ... "The workflow must be active for a production URL to run"` | Right URL, but the n8n workflow is switched off | Only a human can fix this: ask them to activate the workflow with the toggle at the top-right of the n8n editor, then re-run. Do not retry until they confirm — it will 404 every time |
+| `404 ... webhook "stream" is not registered` (no "must be active" hint) | The test URL was used | Use the production URL |
 | `{"message":"Workflow was started"}` | n8n is set to respond immediately | The workflow needs a *Respond to Webhook* node; results are not coming |
 | `[]` | Keywords matched nothing | A keyword problem, not a fault |
 | Every row `relevant: false` | Prompt too strict | A prompt problem — offer a looser rewrite |
@@ -113,9 +114,18 @@ before reading any rows for enrichment.
 
 ### 1. Find out what to enrich
 
-Ask which table, and which rows. The user can see the base and you cannot —
+Ask which stream, and which rows. The user can see the base and you cannot —
 their answer is authoritative. "The new ones" is a valid answer; ask them
 which ones those are.
+
+Read the `Streams` table first and show what exists. Each row carries
+`Stream Name`, `Status`, `Table ID`, `Job Titles`, `Keywords` and running
+totals (`Total Found`, `Total Passed`, `Total Contacts`, `Valid Emails`,
+`Cost`). That one read tells you what the streams are, which are live, where
+each one's data lives, and what it has already cost.
+
+A stream whose `Status` is `draft` has never run and its table will be empty.
+Say that plainly rather than reporting "no rows found" as if something broke.
 
 The NocoDB base itself is titled "Streams", and it also contains a table
 titled `Streams` — when it could be misread, say "the base" or name the table,
@@ -136,18 +146,63 @@ Read-only, always: `getBaseInfo`, `getTablesList`, `getTableSchema`,
 
 **Never** `createRecords`, `updateRecords`, or `deleteRecords`. Nothing in this
 mode writes to NocoDB. If you believe you need to write, you have misread the
-task — stop and ask.
+task — stop and ask. The token is write-capable, so nothing but this rule
+stops you, and `deleteRecords` against the live base has no undo.
+
+**Find the data table through `Streams`, not by guessing its name.** Each row
+of `Streams` has a `Table ID` field holding the id of that stream's own data
+table. Read `Streams` first, match on `Stream Name`, take `Table ID`.
+
+**`queryRecords` takes `tableId`, not `tableName`, and pages with `pageSize`
+and `page` — not `limit`.** Passing `tableName` is rejected outright; passing
+`limit` is silently ignored, which is worse, because you will believe you
+capped the read and you did not.
+
+**Rows come back nested.** Each record is
+`{"id": 1, "id_fields": {...}, "fields": {...}}` — the data you want is inside
+`fields`. Reading `row["Company Name"]` returns nothing; you need
+`row["fields"]["Company Name"]`.
+
+**The column names are Title Case with spaces, and they are not the discovery
+endpoint's field names.** A stream's data table has:
+
+| Column | Was, in the discovery payload |
+|---|---|
+| `Company Name` | `companyName` |
+| `Relevance Reason` | `reason` |
+| `Source` | `source` |
+| `Confidence` | `confidence` |
+| `Scraped Content` | `content` |
+| `Date Added` | — |
+
+There is **no `relevant` column**. Only rows that passed qualification are
+written, so every row you read is already a pass. Do not filter on `relevant`
+and do not report a pass rate from this table — that number lives on the
+`Streams` row (`Total Found`, `Total Passed`).
+
+Verified live against the base on 2026-08-11. If a read returns nothing where
+you expected rows, re-check the schema with `getTableSchema` before assuming
+the table is empty — a renamed column looks exactly like no data.
 
 ### 3. Ask for the job titles
 
 **Every run. Before anything is spent. No exceptions.**
 
-> Which job titles do you want at these companies?
+The stream's own row in `Streams` has a `Job Titles` field — for example
+`Owner, Dealer Principal, General Manager, Marketing Director, VP of
+Marketing, Director of Operations`. **Offer it; never assume it.**
 
-If an earlier run in this same conversation used titles, you may *offer* them —
-"last time you used Head of HR, People Director, CSR Manager — same again?" —
-but the user must say yes. Never carry them over silently, and never infer them
-from the table.
+> This stream is configured for: Owner, Dealer Principal, General Manager,
+> Marketing Director, VP of Marketing, Director of Operations.
+> Use those, or different ones?
+
+Wait for an answer. A configured default is a suggestion, not consent — it was
+set once, possibly by someone else, possibly for a different campaign. The
+question is the one thing standing between the user and money they did not
+mean to spend.
+
+Never carry titles over silently from an earlier run in the same conversation,
+and never infer them from the table's contents.
 
 ### 4. Confirm the spend
 
