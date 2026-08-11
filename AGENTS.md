@@ -23,17 +23,17 @@ private by design and `.env` is deliberately committed, which is why
 If the MCP servers are not connected yet, run `./setup.sh` once. It wires both
 of them to this folder and nowhere else.
 
-## Running as Codex? One thing does not work
+## Running as Codex
 
-Enrichment via AI Ark fails in Codex — `Transport channel closed`, or a tool
-call reporting `tools.mcp__ai_ark__… is not a function`. It is an upstream bug
-in AI Ark's server, not a fault in this repo, and not something the user did.
+Both modes work in Codex. AI Ark's remote endpoint still returns plain JSON
+after negotiating an event stream, which Codex's direct HTTP client rejects.
+The project-scoped `.codex/config.toml` therefore launches the pinned
+`mcp-remote` STDIO bridge for `ai-ark`; NocoDB remains direct HTTP.
 
-Test mode and reading NocoDB both work in Codex. Only enrichment is affected.
-
-Read [docs/codex-ai-ark-setup.md](docs/codex-ai-ark-setup.md) before trying
-anything. The one-step fix is to open this same folder in Claude Code — same
-skill, same `.env`, nothing to reconfigure.
+If the `ai-ark` tools are missing, run `./setup.sh` and restart Codex. Node.js
+and npm must be installed because Codex launches the bridge through `npx`.
+Read [docs/codex-ai-ark-setup.md](docs/codex-ai-ark-setup.md) for the exact
+wiring and troubleshooting steps.
 
 ## Two modes, and they share nothing
 

@@ -20,10 +20,11 @@ copies — neither one changes how your agents behave anywhere else on your
 machine. Cloning gives you the skill; `./setup.sh` adds the two data
 connections it needs.
 
-One thing to know up front: the enrichment step works in Claude Code but not
-in Codex, because of a bug in one of the upstream services. Everything else
-works in both. `./setup.sh` tells you if this is still the case when you run
-it, and [docs/troubleshooting.md](docs/troubleshooting.md) explains it.
+Both modes work in Claude Code and Codex. AI Ark's remote MCP endpoint has a
+transport incompatibility with Codex, so the repo's project-scoped Codex
+configuration automatically routes that one connection through a pinned local
+bridge. Node.js/npm is required on first use so `npx` can fetch the bridge.
+[docs/codex-ai-ark-setup.md](docs/codex-ai-ark-setup.md) explains the wiring.
 
 ## What to say to your agent
 

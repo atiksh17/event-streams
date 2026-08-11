@@ -27,6 +27,13 @@ warn()    { printf '  \033[33mskip\033[0m %s\n' "$*"; }
 caution() { printf '  \033[33mwarn\033[0m %s\n' "$*"; }
 die()     { printf '\n  \033[31mfailed\033[0m %s\n\n' "$*" >&2; exit 1; }
 
+# AI Ark's remote endpoint currently violates Streamable HTTP by negotiating
+# an event stream and then replying with plain JSON. Codex rejects that
+# response, so its project config launches this pinned STDIO bridge instead.
+# Pinning keeps a fresh clone reproducible; update only after a live
+# initialize + tools/list check against AI Ark.
+AI_ARK_BRIDGE_PACKAGE="mcp-remote@0.1.37"
+
 # Codex's rmcp streamable-HTTP client requires an SSE reply. A server that
 # answers with anything else kills it with "Transport channel closed" even
 # though the server is healthy - Claude Code tolerates the deviation. This
@@ -81,6 +88,93 @@ probe_codex_stream_compat() {
   esac
 }
 
+# Prove the exact path Codex uses for AI Ark: local STDIO into mcp-remote,
+# then the bridge's tolerant HTTP client into AI Ark. The bridge writes its
+# remote URL (including the query-string credential) to stderr, so stderr is
+# captured and discarded deliberately. Only a credential-free status marker
+# comes back to the shell.
+probe_codex_ai_ark_bridge() {
+  local url="$1" result
+  if ! command -v npx >/dev/null 2>&1; then
+    printf '  \033[31mFAIL\033[0m codex ai-ark needs Node.js/npm (npx was not found)\n'
+    rc=1
+    return
+  fi
+
+  result=$(python3 - "$url" "$AI_ARK_BRIDGE_PACKAGE" <<'PY'
+import json
+import select
+import subprocess
+import sys
+import time
+
+url, package = sys.argv[1:3]
+request = json.dumps({
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+        "protocolVersion": "2025-06-18",
+        "capabilities": {},
+        "clientInfo": {"name": "event-streams-setup", "version": "1.0"},
+    },
+}) + "\n"
+
+process = subprocess.Popen(
+    ["npx", "-y", package, url, "--transport", "http-only"],
+    stdin=subprocess.PIPE,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.DEVNULL,
+    text=True,
+)
+try:
+    # Keep stdin open after writing. Codex maintains a long-lived STDIO
+    # session; closing it here makes mcp-remote shut down before the remote
+    # initialize response can be forwarded.
+    process.stdin.write(request)
+    process.stdin.flush()
+    deadline = time.monotonic() + 120
+    outcome = "timeout"
+    while time.monotonic() < deadline:
+        ready, _, _ = select.select([process.stdout], [], [], deadline - time.monotonic())
+        if not ready:
+            break
+        line = process.stdout.readline()
+        if not line:
+            outcome = "failed"
+            break
+        try:
+            message = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if message.get("id") == 1 and "result" in message:
+            info = message["result"].get("serverInfo", {})
+            outcome = "ok:" + str(info.get("name", "unknown")) + "/" + str(info.get("version", "unknown"))
+            break
+    print(outcome)
+finally:
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+PY
+)
+
+  case "$result" in
+    ok:*) ok "codex ai-ark bridge initialized over STDIO (${result#ok:})" ;;
+    timeout)
+      printf '  \033[31mFAIL\033[0m codex ai-ark bridge timed out during initialize\n'
+      rc=1
+      ;;
+    *)
+      printf '  \033[31mFAIL\033[0m codex ai-ark bridge did not return a valid initialize response\n'
+      rc=1
+      ;;
+  esac
+}
+
 # Let the test suite source this file to reach the functions above without
 # running an install. Nothing below this line executes when sourced this way.
 if [ "${EVENT_STREAMS_SOURCE_ONLY:-}" = "1" ]; then
@@ -130,7 +224,9 @@ cat > .codex/config.toml <<TOML
 # route. Do not "simplify" this to a codex mcp add call.
 
 [mcp_servers.ai-ark]
-url = "${AI_ARK_URL}"
+command = "npx"
+args = ["-y", "${AI_ARK_BRIDGE_PACKAGE}", "${AI_ARK_URL}", "--transport", "http-only"]
+startup_timeout_sec = 120
 
 [mcp_servers.nocodb-streams]
 url = "${NOCODB_MCP_URL}"
@@ -282,11 +378,9 @@ fi
 codex_stream_warned=0
 if command -v codex >/dev/null 2>&1; then
   # `codex mcp list` only reports registration - is the server present and
-  # enabled in config.toml. It says nothing about whether Codex can actually
-  # talk to it, which is exactly how AI Ark's incompatibility passed a green
-  # install before: registered but unreachable by Codex's client. The probe
-  # below is the real connectivity check - it hits each server the way
-  # Codex's rmcp streamable-HTTP client would and inspects the response.
+  # enabled in config.toml. The probes below exercise the real transports:
+  # AI Ark through the local STDIO bridge, and NocoDB through direct
+  # Streamable HTTP.
   out=$(codex mcp list 2>&1 || true)
   for s in ai-ark nocodb-streams; do
     if echo "$out" | grep -q "$s"; then ok "codex $s registered (config presence only, not a connectivity check)"
@@ -303,10 +397,9 @@ if command -v codex >/dev/null 2>&1; then
     ok "codex scope confirmed: servers resolve here and nowhere else"
   fi
 
-  say "codex: probing whether each server actually answers with an SSE stream (what Codex's client requires)..."
+  say "codex: probing the AI Ark STDIO bridge and NocoDB Streamable HTTP..."
 
-
-  probe_codex_stream_compat "ai-ark" "$AI_ARK_URL"
+  probe_codex_ai_ark_bridge "$AI_ARK_URL"
   probe_codex_stream_compat "nocodb-streams" "$NOCODB_MCP_URL" -H "xc-mcp-token: ${NOCODB_MCP_TOKEN}"
 fi
 

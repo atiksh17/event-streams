@@ -37,6 +37,12 @@ grep -q 'codex mcp add .*nocodb' setup.sh && bad=1 || bad=0
 [ "$bad" -eq 0 ]
 check "setup.sh does NOT try codex mcp add for nocodb (no --header flag exists)" $?
 
+grep -q 'AI_ARK_BRIDGE_PACKAGE="mcp-remote@0.1.37"' setup.sh
+check "AI Ark bridge dependency is pinned for reproducible clones" $?
+
+grep -q 'probe_codex_ai_ark_bridge' setup.sh
+check "setup verifies AI Ark through the same STDIO bridge Codex uses" $?
+
 echo
 if [ "$fails" -gt 0 ]; then echo "$fails check(s) failed"; exit 1; fi
 echo "all setup checks passed"

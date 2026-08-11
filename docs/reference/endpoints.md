@@ -42,8 +42,8 @@ Where a value hasn't been confirmed against a real run yet, it's marked
 
 - **URL**: `https://api.ai-ark.com/v1/mcp?token=<AI_ARK_API_KEY>` — the
   token is a **query parameter**, not a header.
-- **Status**: connected and verified working — from Claude Code. Fails from
-  Codex; see the transport-shape finding below.
+- **Status**: connected and verified working from Claude Code directly and
+  from Codex through the project's pinned `mcp-remote@0.1.37` STDIO bridge.
 - **Server info**: `serverInfo {name: "mcp", version: "1.0.0"}`, protocol
   `2025-06-18` — from a live `initialize` call, 2026-08-10.
 - **Transport shape (probed 2026-08-11)**: the server **requires**
@@ -54,9 +54,13 @@ Where a value hasn't been confirmed against a real run yet, it's marked
   deviation. Codex's `rmcp` streamable-HTTP client does not: it asks for
   the stream it was told to expect, gets a non-stream back, and its
   transport worker dies with `rmcp::transport::worker: worker quit with
-  fatal: Transport channel closed` — see
-  [../troubleshooting.md](../troubleshooting.md) for the full symptom and
-  workaround. **Contrast**: NocoDB's MCP server (below) replies
+  fatal: Transport channel closed`. The project avoids that direct path:
+  `.codex/config.toml` starts `mcp-remote@0.1.37` as a local STDIO server, and
+  the bridge tolerates AI Ark's JSON response. A live bridge check completed
+  `initialize` and `tools/list` on 2026-08-11. A fresh Codex process then
+  loaded the bridged server and successfully called `industry_search`, proving
+  the tool surface is available beyond the standalone bridge probe.
+  **Contrast**: NocoDB's MCP server (below) replies
   `content-type: text/event-stream` with proper `event:`/`data:` framing
   for the same kind of request, and works from Codex — this contrast is
   the whole diagnosis: same client, same repo config, different server

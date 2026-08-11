@@ -19,29 +19,25 @@ need to ask anyone for a key. All of them live there:
 Never print a credential's value into the conversation, and never paste one
 into a chat message. Read them from `.env` and use them.
 
-## What works in Codex, and what does not
+## What works in Codex
 
 | | Codex |
 |---|---|
 | The `event-streams` skill | works |
 | Test mode (trialling keywords) | works |
 | Reading stream rows from NocoDB | works |
-| **Enriching contacts via AI Ark** | **does not work** |
+| **Enriching contacts via AI Ark** | **works through the project STDIO bridge** |
 
-If enrichment fails with `Transport channel closed`, or a tool call reports
-`tools.mcp__ai_ark__… is not a function`, that is the known issue — **not**
-a mistake in this repo and not something the user did.
+AI Ark's remote endpoint still returns plain JSON after negotiating an event
+stream, so Codex cannot use it as direct Streamable HTTP. This repo's
+`.codex/config.toml` launches pinned `mcp-remote@0.1.37` over STDIO instead.
 
 **Read [`../docs/codex-ai-ark-setup.md`](../docs/codex-ai-ark-setup.md)** for
-what is wrong, the workarounds, and how to check whether it has been fixed.
+the exact wiring and troubleshooting steps.
 
-Short version: AI Ark's server demands an event-stream reply then sends plain
-JSON. Codex's client refuses it; Claude Code tolerates it. The quickest path
-is to open this same folder in Claude Code for the enrichment step — same
-skill, same credentials, nothing to reconfigure.
-
-Do not "fix" `.codex/config.toml`. It is correct and identical to the working
-Claude Code configuration.
+If the tools are missing, run `./setup.sh` and restart Codex. Node.js/npm is
+required because the bridge launches through `npx`. Do not replace the bridge
+with a direct `url = ...` entry while AI Ark still returns plain JSON.
 
 ## The skill itself
 

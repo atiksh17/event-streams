@@ -139,21 +139,13 @@ Reads NocoDB via the `nocodb-streams` MCP server, enriches via the `ai-ark`
 MCP server. Never writes to either. Two different agent harnesses run this
 skill; both are configured with servers of these same two names.
 
-**On Codex, step 5 (enrich) will fail.** AI Ark's MCP server has a known
-upstream bug that Codex's client cannot tolerate — it surfaces as `Transport
-channel closed`, or as a tool call reporting
-`tools.mcp__ai_ark__… is not a function`. Reading NocoDB and test mode both
-still work from Codex.
-
-If you are running as Codex: **say so before reading any rows**, not after.
-Point the user at
-[docs/codex-ai-ark-setup.md](../../../docs/codex-ai-ark-setup.md) — it explains
-the cause, the workarounds, and how to check whether it has been fixed — and
-offer the one-step fix, which is to open this same folder in Claude Code. Same
-skill, same `.env`, nothing to reconfigure.
-
-Do not attempt the workarounds unprompted. One of them edits the user's global
-Codex configuration, and that is their call.
+On Codex, `ai-ark` is project-scoped through the pinned `mcp-remote` STDIO
+bridge because AI Ark's remote endpoint does not return the event stream
+Codex's direct HTTP client requires. If the AI Ark tools are missing, run
+`./setup.sh`, restart Codex, and see
+[docs/codex-ai-ark-setup.md](../../../docs/codex-ai-ark-setup.md). Do not fall
+back to direct `url = ...` configuration while AI Ark still returns plain
+JSON; that path fails with `Transport channel closed`.
 
 ### 1. Find out what to enrich
 

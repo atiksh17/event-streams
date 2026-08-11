@@ -10,5 +10,5 @@ Read this when you're not sure which doc has the answer.
 | [test-mode.md](test-mode.md) | You're writing or tightening a qualification prompt, deciding whether a pass rate is healthy, or reading the `confidence` field. |
 | [production-mode.md](production-mode.md) | You're choosing job titles, reading a coverage report, or a company came back with nobody. |
 | [troubleshooting.md](troubleshooting.md) | Something failed — install, a server that won't connect, an HTTP error, or a response shape that doesn't match what's documented. |
-| [codex-ai-ark-setup.md](codex-ai-ark-setup.md) | You're running in Codex and enrichment failed — `Transport channel closed`, or `tools.mcp__ai_ark__… is not a function`. The cause, the workarounds, and how to tell when it's been fixed. |
+| [codex-ai-ark-setup.md](codex-ai-ark-setup.md) | You need to understand or troubleshoot the project-scoped AI Ark bridge used by Codex. |
 | [reference/endpoints.md](reference/endpoints.md) | You need the exact URL, auth shape, request/response fields, or tool list for the discovery endpoint, AI Ark, or NocoDB. |
