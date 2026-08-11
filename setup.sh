@@ -224,8 +224,14 @@ if header in text:
     nxt = re.search(r"\n\[", text[start:])
     end = start + (nxt.start() if nxt else len(text) - start)
     section = text[start:end]
-    if re.search(r"^\s*trust_level\s*=", section, flags=re.M):
-        section = re.sub(r"^\s*trust_level\s*=.*$", 'trust_level = "trusted"',
+    # `[ \t]*`, never `\s*`. In Python `\s` matches newlines, so `^\s*trust_level`
+    # can start matching at the newline that separates the table header from the
+    # key - the replacement then swallows it and emits
+    # `[projects."..."]trust_level = "trusted"` on one line. That is invalid TOML
+    # and Codex refuses to start at all, machine-wide. Shipped once; do not
+    # reintroduce.
+    if re.search(r"^[ \t]*trust_level[ \t]*=", section, flags=re.M):
+        section = re.sub(r"^[ \t]*trust_level[ \t]*=.*$", 'trust_level = "trusted"',
                          section, count=1, flags=re.M)
     else:
         section = '\ntrust_level = "trusted"' + section
