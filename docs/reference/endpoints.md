@@ -82,12 +82,23 @@ carry the same `Execution ID`, which is what the stop call needs.
 wrote*. Never `/workflows/{id}/deactivate` — that switches off the daily
 production stream and fails silently.
 
-**`N8N_API_KEY` returns `{"message":"unauthorized"}` on every endpoint as of
-2026-08-17**, while the public API itself is live (docs at `/api/v1/docs/`,
-spec `v1.1.1`, scheme `X-N8N-API-KEY`, `/executions/{id}/stop` present in the
-spec, key a well-formed JWT with `aud: public-api`). Not a request-shape
-problem — the key needs re-issuing on this instance. Until then the stop step
-cannot run and a run continues to completion.
+**Verified working 2026-08-17.** A live stop returned `200` with
+`{"mode":"webhook","startedAt":"2026-08-17T10:16:01.356Z","stoppedAt":"2026-08-17T10:44:31.661Z","finished":false,"status":"canceled"}`,
+and the Relevance Tray held flat immediately afterwards. Confirm a stop by
+watching the tray stop growing, not by the response body alone.
+
+**The `unauthorized` failure mode, and its one cause.** A previous
+`N8N_API_KEY` returned `{"message":"unauthorized"}` on every endpoint for a
+full day while the API itself was live — docs at `/api/v1/docs/`, spec
+`v1.1.1`, scheme `X-N8N-API-KEY`, `/executions/{id}/stop` present in the spec,
+and the key a well-formed JWT with `aud: public-api`. Every request-shape
+hypothesis was wrong. **The key had been minted on a different n8n instance**;
+issuing a fresh one on `n8n.goautofusion.com` → Settings → n8n API fixed it on
+the first try. If this recurs, re-issue the key and skip the investigation.
+
+**What it costs to not stop, measured.** Execution `882` was targeted at 5
+qualified rows. Between hitting 5 and being cancelled ~20 minutes later it
+wrote 9 more, reaching 14 — all judged, all billed, none wanted.
 
 ### The `sources` field — required on the discovery request
 

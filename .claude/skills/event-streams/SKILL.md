@@ -66,6 +66,15 @@ uses both names.
 you keywords and a prompt and said nothing about which URL to use, fire the
 left column. It needs no arming and can be fired as often as you like.
 
+**Arming and being active are two different switches, and only one is yours to
+reason about.** A `webhook/` URL needs no arming, but its workflow still has to
+be **Active** in n8n — and the two stages are toggled independently, so
+discovery being live tells you nothing about qualification. Verified 2026-08-17:
+`/webhook/stream` answered while `/webhook/qualification` 404'd with *"The
+workflow must be active for a production URL to run"*, and flipping that one
+toggle fixed it. Run the [GET liveness check](#the-free-liveness-check--do-this-before-blaming-a-run)
+on **the stage you are about to fire**, not on the one that worked last time.
+
 **Call the right column the *dev endpoint*, never the "test endpoint".** Test
 mode is a mode the *user* runs. A `webhook-test/` URL is for whoever is
 debugging the *backend*. They are two different things and the names collide,
@@ -267,15 +276,33 @@ do. Then:
       -H "X-N8N-API-KEY: $N8N_API_KEY" -H 'Accept: */*' \
       "https://n8n.goautofusion.com/api/v1/executions/<Execution ID>/stop"
 
+**The n8n public API over `curl` is the only route. Never the n8n MCP server.**
+Not to stop an execution, not to list them, not to check whether one is
+running. The MCP server in this environment is pointed at a different n8n
+instance entirely (`primary-production-d3217.up.railway.app`, verified
+2026-08-17 returning *"Application not found"*), so anything it reports is
+about the wrong system — and a stop issued through it would either fail or hit
+a stranger's workflow. `curl` against `n8n.goautofusion.com/api/v1` is the
+contract; there is no fallback.
+
 **Stop only an execution id you read from a row this run wrote.** Never
 `/workflows/{id}/deactivate` — that switches off the daily production stream
 and fails silently.
 
-`N8N_API_KEY` lives in `.env`. **As of 2026-08-17 that key returns
-`{"message":"unauthorized"}` on every endpoint** while the public API itself
-is live (docs at `/api/v1/docs/`, spec `v1.1.1`, scheme `X-N8N-API-KEY`) — so
-it needs re-issuing on this instance. If the stop call 401s, say so plainly,
-stop polling, and tell the user the run is still burning credits.
+`N8N_API_KEY` lives in `.env`. **Verified working 2026-08-17**: execution
+`882` was cancelled mid-run, returning
+`{"mode":"webhook","stoppedAt":"...","finished":false,"status":"canceled"}`,
+and the Relevance Tray stopped growing within a minute. A `200` with
+`"status":"canceled"` is the success signature — confirm it by watching the
+tray go flat, not by trusting the response alone.
+
+**If the call returns `401 {"message":"unauthorized"}`, the key is for the
+wrong n8n instance.** That exact failure ran for a full day against this same
+live API (docs at `/api/v1/docs/`, spec `v1.1.1`, scheme `X-N8N-API-KEY` — all
+correct) and was fixed by issuing a fresh key on `n8n.goautofusion.com` →
+Settings → n8n API. Do not go hunting for a request-shape bug; there isn't one.
+Say so plainly, stop polling, and tell the user the run is still spending —
+measured cost of not stopping: a run targeted at 5 qualified rows reached 14.
 
 **Set a ceiling.** If the count stops moving below `N` for ~15 minutes, stop
 the execution anyway and report what you have — *"6 of 10 requested; the
@@ -361,7 +388,7 @@ question, asked after the row exists. Never fold the two together.
 
 | What you see | What it means | What to say |
 |---|---|---|
-| `404 ... "The workflow must be active for a production URL to run"` | Right URL, but the n8n workflow is switched off | Only a human can fix this: ask them to activate the workflow with the toggle at the top-right of the n8n editor, then re-run. Do not retry until they confirm — it will 404 every time |
+| `404 ... "The workflow must be active for a production URL to run"` | Right URL, no arming needed — the n8n workflow is simply switched **off**. Each stage toggles independently, so this happens to qualification while discovery is happily running | Only a human can fix this: ask them to activate that workflow with the toggle at the top-right of the n8n editor, then re-run. Do not retry until they confirm — it will 404 every time. **Nothing is lost**: discovery's rows are already banked, so you resume at qualification with no re-scraping |
 | `404 ... is not registered ... Click the 'Execute workflow' button` in ~0.5s | A **dev endpoint** (`webhook-test/`) that nobody has armed, or whose single call is already used | **You cannot fix this yourself.** First ask why you are on a dev endpoint at all — unless the user said they are the developer, the answer is that you should be on `/webhook/…`. If a dev endpoint is genuinely wanted, ask the user to click *Execute workflow*, wait for them to confirm, then fire once. Do not retry blind — every call 404s until it is armed |
 | `{"message":"Workflow was started"}` from **`/qualification`** | **Success.** That endpoint acks immediately and works in the background | Expected. Go watch the Relevance Tray; results never come back in this response |
 | `{"message":"Workflow was started"}` from **`/stream`** | Wrong for discovery — that one is supposed to return its rows | The workflow needs a *Respond to Webhook* node; results are not coming |

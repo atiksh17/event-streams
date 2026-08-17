@@ -22,10 +22,14 @@ which is why `.gitignore` does not list it.
 
 `N8N_API_KEY` authenticates the n8n public API (`/api/v1`, header
 `X-N8N-API-KEY`) and exists solely to stop a running execution — rule 7.
-**Known broken as of 2026-08-17:** every endpoint returns
-`{"message":"unauthorized"}` even though the API itself is live. It needs
-re-issuing on `n8n.goautofusion.com`. Until then the stop step cannot run, and
-a test that reaches its target keeps spending until it finishes on its own.
+**Working, verified 2026-08-17.** `GET /executions` and `GET /workflows` both
+return `200`, and a real stop succeeded: execution `882` was cancelled mid-run
+with `{"status":"canceled","finished":false}`, and the Relevance Tray stopped
+growing immediately. An earlier key on this same file returned
+`{"message":"unauthorized"}` on every endpoint against the same live API —
+almost certainly minted on a different n8n instance. **If `unauthorized`
+returns, that is the cause**: re-issue on `n8n.goautofusion.com` → Settings →
+n8n API, and never go looking for a request-shape bug.
 
 If the MCP servers are not connected yet, run `./setup.sh` once. It wires both
 of them to this folder and nowhere else.
@@ -134,13 +138,24 @@ production mode, you have the wrong mode — stop and re-read the skill.
    URL. Dev endpoints are single-shot and **only a human can arm them**: they
    answer exactly one call after someone clicks *Execute workflow* on the n8n
    canvas, then disarm, and an unarmed call 404s in half a second. Ask, wait
-   for confirmation, fire once. Never retry blind.
-7. **Stopping a run means stopping one execution, never a workflow.**
+   for confirmation, fire once. Never retry blind. **Arming and being Active
+   are separate switches**: a `webhook/` URL needs no arming but still 404s
+   with *"The workflow must be active for a production URL to run"* when its
+   workflow is toggled off — and the two stages toggle independently, so
+   discovery running proves nothing about qualification. Probe the stage you
+   are about to fire with a free GET first.
+7. **Stopping a run means stopping one execution, never a workflow, and
+   always over `curl` — never the n8n MCP server.**
    `POST /api/v1/executions/<id>/stop` with header `X-N8N-API-KEY` from
    `.env`, and `<id>` read from the `Execution ID` column of a tray row **this
    run wrote**. Never `/workflows/{id}/deactivate` — that switches off the
-   daily production stream and fails silently. If the key returns
-   `unauthorized`, say so and stop polling; the run is still spending.
+   daily production stream and fails silently. **The `n8n-mcp` server is
+   off-limits for this entirely** — stopping, listing, health-checking, all of
+   it. It points at a different instance
+   (`primary-production-d3217.up.railway.app`), so its answers describe the
+   wrong system. If the key returns `unauthorized`, say so and stop polling;
+   the run is still spending. Measured 2026-08-17: a run that could not be
+   stopped at its 5-row target wrote 11 rows before anyone noticed.
 
 Full detail per mode: [docs/test-mode.md](docs/test-mode.md),
 [docs/production-mode.md](docs/production-mode.md). Exact endpoint and tool
