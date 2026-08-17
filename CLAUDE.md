@@ -15,10 +15,21 @@ every doc in this repo with a "read this when..." line.
 ## Credentials
 
 Every key is already in **`.env`** at the repo root — `AI_ARK_API_KEY`,
-`NOCODB_MCP_TOKEN`, `NOCODB_MCP_URL`, `DISCOVERY_URL`. Nothing to request from
-anyone, nothing to paste into a chat. Read them from that file. This repo is
-private by design and `.env` is deliberately committed, which is why
-`.gitignore` does not list it.
+`NOCODB_MCP_TOKEN`, `NOCODB_MCP_URL`, `DISCOVERY_URL`, `N8N_API_KEY`. Nothing
+to request from anyone, nothing to paste into a chat. Read them from that
+file. This repo is private by design and `.env` is deliberately committed,
+which is why `.gitignore` does not list it.
+
+`N8N_API_KEY` authenticates the n8n public API (`/api/v1`, header
+`X-N8N-API-KEY`) and exists solely to stop a running execution — rule 7.
+**Working, verified 2026-08-17.** `GET /executions` and `GET /workflows` both
+return `200`, and a real stop succeeded: execution `882` was cancelled mid-run
+with `{"status":"canceled","finished":false}`, and the Relevance Tray stopped
+growing immediately. An earlier key on this same file returned
+`{"message":"unauthorized"}` on every endpoint against the same live API —
+almost certainly minted on a different n8n instance. **If `unauthorized`
+returns, that is the cause**: re-issue on `n8n.goautofusion.com` → Settings →
+n8n API, and never go looking for a request-shape bug.
 
 If the MCP servers are not connected yet, run `./setup.sh` once. It wires both
 of them to this folder and nowhere else.
@@ -35,19 +46,51 @@ and npm must be installed because Codex launches the bridge through `npx`.
 Read [docs/codex-ai-ark-setup.md](docs/codex-ai-ark-setup.md) for the exact
 wiring and troubleshooting steps.
 
-## Two modes, and they share nothing
+## Two modes, and the two crossings between them
 
-**Test mode** — trialling keywords, sources and a qualification prompt. Touches the
-discovery endpoint only. No NocoDB, no AI Ark, nothing is spent.
+**Test mode** — trialling keywords, sources and a qualification prompt. It is
+one workflow no longer: **two endpoints, fired in order**, split so a failure
+lands in an identifiable half. Both halves proven end to end 2026-08-17.
+
+**0. Ask for all four inputs before firing anything.** Keywords, qualification
+prompt, sources, and **how many qualified results to stop at — default 10**.
+Say that a higher number makes the test slower. If the user asks you to write
+the keywords or the prompt, keep the keyword list short, keep the prompt close
+to what they asked for, and ask questions when their intent is unclear.
+
+**1. Discovery** — `POST https://n8n.goautofusion.com/webhook/stream`. Banks
+every scraped item into the **Source Tray** (`m3s2n0eevrh9d5p`), ~5.5 minutes.
+Rows appearing means it is working; nothing is stopped at this stage. It is
+finished when the row count stops rising for 20–60 seconds.
+
+**2. Qualification** (a.k.a. relevance check) —
+`POST https://n8n.goautofusion.com/webhook/qualification`. Body is exactly two
+fields: `data`, holding **every Source Tray row** as an object with the tray's
+column names as keys, and `qualificationPrompt`, the camelCase string carried
+identically on every one of those rows. Winners land in the **Relevance Tray**
+(`mz8e0h1xfwalzeh`) over roughly **10–15 minutes** at a **10–20% pass rate**,
+so poll patiently. Stop the execution the moment the tray hits the target —
+rule 7.
+
+**3. Enrichment, only if the user likes what came back.** Show the qualified
+companies, ask their opinion, and on a yes run the **unchanged production-mode
+AI Ark procedure** — screening, job titles, spend confirmation, all of it.
+
+Both trays are disposable scratch space, **read-only to the agent**, and the
+only NocoDB steps 1 and 2 touch.
 
 **Production mode** — enriching rows a daily stream already collected.
-Touches NocoDB and AI Ark only. Never calls the discovery endpoint.
+Touches NocoDB and AI Ark only. Never calls discovery or qualification.
 
-If a task pulls you toward NocoDB while in test mode, or toward the
-discovery endpoint while in production mode, you have the wrong mode —
-stop and re-read the skill.
+**Managing the stream records themselves** — creating a stream, editing its
+config, starting or stopping it — is a write to the `Streams` table, allowed
+from either mode and only ever on the user's explicit yes. See rule 4 and the
+`## Writing to Streams` section of the skill.
 
-## Five rules that must not need a lookup
+If a task pulls you toward the discovery or qualification endpoint while in
+production mode, you have the wrong mode — stop and re-read the skill.
+
+## Seven rules that must not need a lookup
 
 1. **Never print a secret.** Not a key, not a token. They live in
    `.env`. To check whether one is set, print whether it's set
@@ -62,18 +105,57 @@ stop and re-read the skill.
    per row — separately from the spend confirmation. Same for *dodgy* rows,
    where the qualifying evidence actually belongs to another company named
    inside the article. "Enrich the rest" covers the clean rows only.
-4. **Nothing in production mode writes to NocoDB.** `createRecords`,
-   `updateRecords`, and `deleteRecords` are never called — the base belongs
-   to the automated daily system, not to a one-off enrichment run. Two
-   tables are critical and read-only in the strongest sense — never
-   modified, never deleted: **`Streams`** (`mfo88n8n35b9qvl`), the
-   scheduler, one row per stream; and **`Template (DO NOT TOUCH)`**
-   (`m0liglo73sxjwa8`), which is never even read. Every other table is one
-   stream's data, reached through the `Table ID` column of that stream's
-   row — never by guessing its name.
-5. **Test mode and production mode share nothing.** Each touches exactly
-   one external system. Reaching for the other's system means the task has
-   been misread.
+4. **The only table ever written is `Streams`, and never without the
+   user's explicit yes.** The agent may create a stream, edit its config,
+   and start or stop it — `createRecords` and `updateRecords` against
+   **`Streams`** (`mfo88n8n35b9qvl`), in six columns and no others:
+   `Stream Name`, `Stream Description`, `Keywords`, `Qualification Prompt`,
+   `Sources`, `Enabled`. Everything else on the row — `Table ID`,
+   `Last Run`, `Last Run Status`, any state or totals column — belongs to
+   the automated daily system and is never touched. **Confirm the exact
+   write every single time**; a yes to the conversation, or to the test run
+   that produced the values, is not a yes to the write. **Starting a stream
+   means setting `Enabled` true, stopping it means setting `Enabled`
+   false** — both confirmed first, naming the stream. **A new stream row is
+   always created with `Enabled` false**, whatever the user said about
+   wanting it live; enabling it is a separate question asked afterwards.
+   `deleteRecords` is never called on anything, and **`Template (DO NOT
+   TOUCH)`** (`m0liglo73sxjwa8`) is never even read. Every other table is
+   one stream's data — read-only, reached through the `Table ID` column of
+   that stream's row, never by guessing its name.
+5. **Test mode owns the two endpoints and the two trays; production mode owns
+   AI Ark and the streams' own tables.** Reaching for an endpoint from
+   production mode means the task has been misread. **Two crossings are
+   deliberate and both need their own yes:** saving a tested stream into
+   `Streams`, and enriching a test's qualified companies through the
+   production procedure — gates included, never a shortcut around them.
+6. **`webhook/` is the default; `webhook-test/` is the *dev endpoint*.**
+   Fire `webhook/` for every test-mode run — it needs no arming. Use a dev
+   endpoint **only when the user has said they are the developer exercising
+   the backend**; the words "test", "testing" and "test mode" are not that
+   statement. Never call `webhook-test/` a "test endpoint" — test mode is a
+   user mode, and conflating the two is how a routine run fires an unarmed
+   URL. Dev endpoints are single-shot and **only a human can arm them**: they
+   answer exactly one call after someone clicks *Execute workflow* on the n8n
+   canvas, then disarm, and an unarmed call 404s in half a second. Ask, wait
+   for confirmation, fire once. Never retry blind. **Arming and being Active
+   are separate switches**: a `webhook/` URL needs no arming but still 404s
+   with *"The workflow must be active for a production URL to run"* when its
+   workflow is toggled off — and the two stages toggle independently, so
+   discovery running proves nothing about qualification. Probe the stage you
+   are about to fire with a free GET first.
+7. **Stopping a run means stopping one execution, never a workflow, and
+   always over `curl` — never the n8n MCP server.**
+   `POST /api/v1/executions/<id>/stop` with header `X-N8N-API-KEY` from
+   `.env`, and `<id>` read from the `Execution ID` column of a tray row **this
+   run wrote**. Never `/workflows/{id}/deactivate` — that switches off the
+   daily production stream and fails silently. **The `n8n-mcp` server is
+   off-limits for this entirely** — stopping, listing, health-checking, all of
+   it. It points at a different instance
+   (`primary-production-d3217.up.railway.app`), so its answers describe the
+   wrong system. If the key returns `unauthorized`, say so and stop polling;
+   the run is still spending. Measured 2026-08-17: a run that could not be
+   stopped at its 5-row target wrote 11 rows before anyone noticed.
 
 Full detail per mode: [docs/test-mode.md](docs/test-mode.md),
 [docs/production-mode.md](docs/production-mode.md). Exact endpoint and tool

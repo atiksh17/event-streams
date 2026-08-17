@@ -35,10 +35,13 @@ Copy this:
 
 ## The two modes
 
-**Testing keywords** — you give keywords, a description of what counts as a
-good result, and which sources to look in (Google News, Justgiving, LinkedIn —
-any combination, at least one). It goes and looks, then shows you what it found
-so you can sharpen the description. Takes 5 to 15 minutes each time.
+**Testing keywords** — you give four things: keywords, a description of what
+counts as a good result, which sources to look in (Google News, Justgiving,
+LinkedIn — any combination, at least one), and how many good results you want
+before it stops (10 by default; more takes longer). It goes and looks, then
+judges what it found, then shows you the companies that passed so you can
+sharpen the description. Budget **fifteen to twenty minutes** — the looking is
+quick, the judging is not, and only about one in ten results passes.
 
 **Enriching** — the system collects results every day on its own. When you want
 contacts, name the table and it produces a spreadsheet of people with emails and
