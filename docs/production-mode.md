@@ -231,23 +231,29 @@ uses, don't have that requirement — they're matched as free text.
 
 ## Why the CSV is the deliverable, not a write back to NocoDB
 
-Production mode reads the `Streams` base and never writes to it, for reasons
-that are about ownership as much as risk:
+The skill can write to the base — but only to the `Streams` table, only in
+six config columns, and only on a confirmed yes (see `## Writing to Streams`
+in the skill). Enrichment output is not one of those things. It goes to a CSV
+and never back into the table it was read from, for reasons that are about
+ownership as much as risk:
 
-- **The base belongs to the automated system, not to a one-off enrichment
-  run.** The daily stream writes to it on its own schedule with its own
-  schema. A skill-driven write risks colliding with that — wrong column,
-  wrong row, or simply data the automated system didn't expect to see change
-  — for a system that isn't watching for external edits.
+- **A stream's data table belongs to the automated system, not to a one-off
+  enrichment run.** The daily stream writes to it on its own schedule with
+  its own schema. A skill-driven write risks colliding with that — wrong
+  column, wrong row, or simply data the automated system didn't expect to see
+  change — for a system that isn't watching for external edits. `Streams` is
+  the exception precisely because its config columns are *meant* to be edited
+  by a human, and the skill only ever edits them as that human's hands.
 - **The NocoDB token this skill uses is not read-only — the endpoint exposes
   `createRecords`, `updateRecords`, and `deleteRecords`, and we verified live
   on 2026-08-10 that all three work with the connected token.** There is no
-  credential-level safety margin here. The only thing standing between
-  enrichment logic and a write is the skill's own prohibition (see
-  `.claude/skills/event-streams/SKILL.md`). If enrichment logic has a bug,
-  the worst case being "a wrong CSV, which you notice and re-run" depends
-  entirely on the skill actually never calling those three tools — a bad
-  write to a live production base doesn't have that same easy undo.
+  credential-level safety margin here. Which tables can be written, which
+  columns, and with what confirmation is decided entirely by the skill's own
+  rules (see `.claude/skills/event-streams/SKILL.md`). If enrichment logic
+  has a bug, the worst case being "a wrong CSV, which you notice and re-run"
+  depends on enrichment never reaching for those tools at all — a bad write
+  to a live production base doesn't have that same easy undo, and
+  `deleteRecords` has none.
 - **A CSV is something the user can actually look at before it goes
   anywhere else.** Whatever happens after enrichment — importing into a CRM,
   handing to a sales tool, spot-checking against LinkedIn — that step is a
@@ -256,5 +262,33 @@ that are about ownership as much as risk:
   live write is what keeps that decision in the user's hands.
 
 If a task ever seems to call for writing the enrichment results back into the
-base, that's a sign the task has been misunderstood, not a sign the rule
-needs bending. Stop and ask.
+base, that's a sign the task has been misunderstood, not a sign the rule needs
+bending. Stop and ask. Writing a *stream's config* is a different thing
+entirely and has its own procedure.
+
+## Starting and stopping streams
+
+"Start this stream" and "stop this stream" both mean one field on one row:
+`Enabled` true or false in the `Streams` table. There is no other switch, and
+nothing else about the row changes.
+
+Two things are worth holding onto when you do it.
+
+**Starting a stream is a spend decision, not a settings change.** An enabled
+stream runs every day until someone turns it off, and each run costs
+whatever its keywords and sources cost. That is why the confirmation names
+the stream and says what enabling means, rather than reading as a shrug —
+"Start `Dealership Group Expansions`? It will run every day from then on."
+
+**A new stream is never born enabled.** It is created with `Enabled` false
+even when the user has just said they want it running, and starting it is a
+second question asked after the row exists. This looks pedantic for about one
+second, and it is the reason a mis-transcribed keyword or a prompt that
+turned out too broad costs nothing: the row sits there, inert, until someone
+has looked at what was actually written. Creating and starting in one motion
+removes the only checkpoint between a typo and a daily bill.
+
+The lag afterwards is normal. The automated system creates the stream's data
+table and fills in `Table ID` on its own schedule, so a freshly started
+stream has an empty `Table ID` and no table for a while. Say that plainly
+rather than treating it as a failed start.

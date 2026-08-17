@@ -6,3 +6,6 @@ data/*
 data/.runs/
 .DS_Store
 .superpowers/
+
+# n8n workflow exports — contain inline third-party API keys, do not commit
+Stream Template*.json

@@ -6,21 +6,60 @@ not sure whether the result is good, or when you need help writing a
 qualification prompt that actually works.
 
 Test mode answers one question: **if we ran this stream for real, would it
-find the right companies?** It costs nothing but time — 5 to 15 minutes per
-run — but that time adds up if you re-run on guesses instead of on reasoned
-changes. This doc is mostly about avoiding wasted runs.
+find the right companies?** It costs no enrichment spend, but it does cost
+real time — **discovery ~5.5 minutes, then qualification 10–15 minutes** —
+and that time, plus your attention, adds up fast if you re-run on guesses
+instead of on reasoned changes. This doc is mostly about avoiding wasted runs.
+
+## The four things to ask before firing anything
+
+Every test-mode run starts with four questions, and none of them are optional:
+
+1. **Search keywords** — what builds the seed list of articles and posts.
+2. **The qualification prompt** — the natural-language instructions for
+   judging whether each of those is actually relevant.
+3. **Sources** — which of the three the run is allowed to sweep.
+4. **How many qualified results** — the stop target. **Default 10**, and say
+   out loud that a higher number means a slower test, so nobody asks for a
+   hundred out of habit.
+
+If the user wants you to write the keywords or the prompt, do it — but keep
+the keyword list short, keep the prompt close to what they actually asked for
+rather than an improved version of it, and **ask when you can't tell what
+they're after**. A prompt built on a guess produces a pass rate that answers
+no question at all.
+
+## Two endpoints, and why they were split
+
+Test mode used to be one workflow. It is now two, fired in order, and the
+split is the point: when something fails you know which half failed.
+
+    discovery      → Source Tray      every scraped item, judged or not
+    qualification  → Relevance Tray   only what passed
+
+Scraping is the expensive half, so it's banked *before* judgement. Re-tuning a
+prompt replays from the Source Tray at zero scraping cost. Before the split, a
+failure at minute 44 destroyed 129 qualified companies in one go.
+
+**Use the `webhook/` URLs.** The `webhook-test/` pair are **dev endpoints** —
+for whoever is debugging the backend, single-shot, and armed only by a human
+clicking *Execute workflow*. They are not "the test endpoints", however much
+the name suggests it: test mode is a user-facing mode and it runs on
+`webhook/`. Reach for a dev endpoint only when the user has said they're the
+developer.
 
 ## What keywords, sources and the qualification prompt actually do
 
-The discovery endpoint doesn't do one job — it does two, in sequence, and
-they fail in different ways.
+The two stages fail in different ways, and the symptom tells you which one
+broke.
 
 1. **Keywords** cast a wide net across **the sources you named** and pull
    back anything that mentions them. This step is dumb on purpose — it
-   over-collects.
+   over-collects, and everything it collects lands in the Source Tray.
 2. **The qualification prompt** is handed to a model, one candidate company
    at a time, and asked to judge: does this company actually belong on the
-   list? This step is where discrimination happens.
+   list? This step is where discrimination happens, and only its winners
+   reach the Relevance Tray.
 
 **`sources` decides where step 1 is even allowed to look.** It's a required
 array on every request, with three accepted values spelled exactly
@@ -60,8 +99,8 @@ on one can return nothing on another:
 - **LinkedIn** — company and employee posts. Good for corporate challenges
   and team events that never reach the press, and for recent activity.
 
-Start with all three unless the user has a reason not to. It costs the same
-5–15 minutes as one source, and the first run's job is to tell you where the
+Start with all three unless the user has a reason not to. It costs about the
+same as one source, and the first run's job is to tell you where the
 signal actually lives. Narrow on the second run, once you can point at which
 source produced the rows you didn't want.
 
@@ -143,9 +182,12 @@ looking for actually is — but a few reference points help:
   "relevant," the qualification step did no work; it just rubber-stamped
   the keyword net. Go find the loosest few passes and ask whether they'd
   really belong on a real prospect list.
-- **A pass rate in the teens to thirties** is typical for a decently tight
-  prompt run against a broad keyword sweep. Most things a keyword net drags
-  in are noise; that's expected, not a bug in the stream.
+- **A pass rate of 10–20% is this system's normal** — one qualified company
+  per 10 to 20 rows judged, measured on real runs. A decently tight prompt
+  against a broad keyword sweep lands here. Most of what a keyword net drags
+  in is noise; that's expected, not a bug in the stream. It's also why a
+  target of 10 qualified companies means judging somewhere north of 50 rows,
+  and why the qualification stage takes 10–15 minutes rather than seconds.
 - **A pass rate near 0%**, or an empty array, can be correct — some
   qualification bars are genuinely rare in the data — but check the
   keyword step first. If the keywords only returned three candidates total,
@@ -197,9 +239,16 @@ ambiguous, not just that individual cases are hard.
 
 ## Why it pays to think before you re-run
 
-Every run costs 5 to 15 minutes, and that time is spent whether the change
-you made was right or not. Three guessed changes cost 15–45 minutes; one
-considered change costs 5–15. The gap compounds fast.
+A full re-run costs **fifteen to twenty minutes** — discovery, then a
+qualification stage that grinds out roughly one row in ten — plus a context
+switch, and all of that is spent whether the change you made was right or not.
+The minutes are only half the bill: three guessed changes also cost three
+rounds of reading results and re-deciding. The gap compounds fast.
+
+**A prompt-only change doesn't need a new discovery run.** The Source Tray
+still holds everything the last sweep scraped, so re-firing qualification
+against it tests the new prompt in one stage instead of two. Only re-run
+discovery when the keywords or sources changed.
 
 Before re-running, do this instead of guessing:
 
@@ -246,6 +295,7 @@ passes now: all ten name a specific company and a specific employee or team,
 sourced from JustGiving or a company post. This is the row to hand to the
 user for the `Streams` table.
 
-Total cost: two runs, roughly 10–30 minutes, because the second prompt
-change targeted the exact failure mode found in the first run's `reason`
-fields rather than a generic "make it stricter" guess.
+Total cost: one discovery sweep and two qualification runs, because the same
+Source Tray rows were re-judged against the new prompt — and because the
+second prompt change targeted the exact failure mode found in the first run's
+`reason` fields rather than a generic "make it stricter" guess.
