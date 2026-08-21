@@ -52,7 +52,7 @@ touches.
 
 ### The endpoints
 
-Base `https://n8n.goautofusion.com`.
+Base `https://n8n.lrc-limited.com`.
 
 | Stage | **Use this — the default** | Dev endpoint — developer only |
 |---|---|---|
@@ -181,7 +181,7 @@ at 10 minutes and the kill looks exactly like a dead endpoint.
      "sources": ["Google News", "Justgiving", "LinkedIn"]}
     JSON
     nohup curl -sS --connect-timeout 15 --max-time 900 \
-      -X POST https://n8n.goautofusion.com/webhook/stream \
+      -X POST https://n8n.lrc-limited.com/webhook/stream \
       -H 'Content-Type: application/json' \
       -d @"data/.runs/$RUN.request.json" \
       -D "data/.runs/$RUN.headers" \
@@ -246,7 +246,7 @@ user thinks were all judged is a wrong number, not a rough one.
 ### 3. Fire qualification
 
     nohup curl -sS --connect-timeout 15 --max-time 1800 \
-      -X POST https://n8n.goautofusion.com/webhook/qualification \
+      -X POST https://n8n.lrc-limited.com/webhook/qualification \
       -H 'Content-Type: application/json' \
       --data-binary @"data/.runs/qual-body.json" \
       -o "data/.runs/$RUN.qual.response.json" \
@@ -274,7 +274,7 @@ do. Then:
 
     curl -sS -X POST \
       -H "X-N8N-API-KEY: $N8N_API_KEY" -H 'Accept: */*' \
-      "https://n8n.goautofusion.com/api/v1/executions/<Execution ID>/stop"
+      "https://n8n.lrc-limited.com/api/v1/executions/<Execution ID>/stop"
 
 **The n8n public API over `curl` is the only route. Never the n8n MCP server.**
 Not to stop an execution, not to list them, not to check whether one is
@@ -282,7 +282,7 @@ running. The MCP server in this environment is pointed at a different n8n
 instance entirely (`primary-production-d3217.up.railway.app`, verified
 2026-08-17 returning *"Application not found"*), so anything it reports is
 about the wrong system — and a stop issued through it would either fail or hit
-a stranger's workflow. `curl` against `n8n.goautofusion.com/api/v1` is the
+a stranger's workflow. `curl` against `n8n.lrc-limited.com/api/v1` is the
 contract; there is no fallback.
 
 **Stop only an execution id you read from a row this run wrote.** Never
@@ -299,7 +299,7 @@ tray go flat, not by trusting the response alone.
 **If the call returns `401 {"message":"unauthorized"}`, the key is for the
 wrong n8n instance.** That exact failure ran for a full day against this same
 live API (docs at `/api/v1/docs/`, spec `v1.1.1`, scheme `X-N8N-API-KEY` — all
-correct) and was fixed by issuing a fresh key on `n8n.goautofusion.com` →
+correct) and was fixed by issuing a fresh key on `n8n.lrc-limited.com` →
 Settings → n8n API. Do not go hunting for a request-shape bug; there isn't one.
 Say so plainly, stop polling, and tell the user the run is still spending —
 measured cost of not stopping: a run targeted at 5 qualified rows reached 14.
@@ -404,7 +404,7 @@ question, asked after the row exists. Never fold the two together.
 A **GET** to the same URL costs nothing, runs no workflow, and answers in
 under a second. It separates three things a failed POST cannot:
 
-    curl -sS --max-time 20 -D - https://n8n.goautofusion.com/webhook/stream
+    curl -sS --max-time 20 -D - https://n8n.lrc-limited.com/webhook/stream
 
 | What comes back | What it tells you |
 |---|---|

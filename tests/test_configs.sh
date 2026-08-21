@@ -17,7 +17,7 @@ for v in AI_ARK_API_KEY NOCODB_MCP_TOKEN NOCODB_MCP_URL DISCOVERY_URL; do
   check "$v is set and non-empty" $?
 done
 
-[ "${DISCOVERY_URL:-}" = "https://n8n.goautofusion.com/webhook/stream" ]
+[ "${DISCOVERY_URL:-}" = "https://n8n.lrc-limited.com/webhook/stream" ]
 check "DISCOVERY_URL is the production webhook, not webhook-test" $?
 
 python3 -c 'import json,sys; json.load(open(".mcp.json"))' 2>/dev/null

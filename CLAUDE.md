@@ -28,7 +28,7 @@ with `{"status":"canceled","finished":false}`, and the Relevance Tray stopped
 growing immediately. An earlier key on this same file returned
 `{"message":"unauthorized"}` on every endpoint against the same live API —
 almost certainly minted on a different n8n instance. **If `unauthorized`
-returns, that is the cause**: re-issue on `n8n.goautofusion.com` → Settings →
+returns, that is the cause**: re-issue on `n8n.lrc-limited.com` → Settings →
 n8n API, and never go looking for a request-shape bug.
 
 If the MCP servers are not connected yet, run `./setup.sh` once. It wires both
@@ -58,13 +58,13 @@ Say that a higher number makes the test slower. If the user asks you to write
 the keywords or the prompt, keep the keyword list short, keep the prompt close
 to what they asked for, and ask questions when their intent is unclear.
 
-**1. Discovery** — `POST https://n8n.goautofusion.com/webhook/stream`. Banks
+**1. Discovery** — `POST https://n8n.lrc-limited.com/webhook/stream`. Banks
 every scraped item into the **Source Tray** (`m3s2n0eevrh9d5p`), ~5.5 minutes.
 Rows appearing means it is working; nothing is stopped at this stage. It is
 finished when the row count stops rising for 20–60 seconds.
 
 **2. Qualification** (a.k.a. relevance check) —
-`POST https://n8n.goautofusion.com/webhook/qualification`. Body is exactly two
+`POST https://n8n.lrc-limited.com/webhook/qualification`. Body is exactly two
 fields: `data`, holding **every Source Tray row** as an object with the tray's
 column names as keys, and `qualificationPrompt`, the camelCase string carried
 identically on every one of those rows. Winners land in the **Relevance Tray**

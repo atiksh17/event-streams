@@ -10,7 +10,7 @@ guessed.
 ## Test mode's two endpoints
 
 Test mode is **two endpoints fired in order**, not one. Verified end to end
-2026-08-17. Base `https://n8n.goautofusion.com`.
+2026-08-17. Base `https://n8n.lrc-limited.com`.
 
 | Stage | Default — always use this | Dev endpoint |
 |---|---|---|
@@ -93,7 +93,7 @@ full day while the API itself was live — docs at `/api/v1/docs/`, spec
 `v1.1.1`, scheme `X-N8N-API-KEY`, `/executions/{id}/stop` present in the spec,
 and the key a well-formed JWT with `aud: public-api`. Every request-shape
 hypothesis was wrong. **The key had been minted on a different n8n instance**;
-issuing a fresh one on `n8n.goautofusion.com` → Settings → n8n API fixed it on
+issuing a fresh one on `n8n.lrc-limited.com` → Settings → n8n API fixed it on
 the first try. If this recurs, re-issue the key and skip the investigation.
 
 **What it costs to not stop, measured.** Execution `882` was targeted at 5
@@ -241,7 +241,7 @@ two-endpoint architecture exists. **None of it describes current behaviour.**
 
 ## NocoDB MCP (production mode)
 
-- **URL**: `https://db.goautofusion.com/mcp/ncuiv55fi0t1x0em`, header
+- **URL**: `https://db.lrc-limited.com/mcp/ncuiv55fi0t1x0em`, header
   `xc-mcp-token` (32-char token, never printed). This id replaces the
   stale `nc6gt1uozqt6i76m` previously written here — that one was a
   different credential type (a NocoDB **API token**, not an **MCP

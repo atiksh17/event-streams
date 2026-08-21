@@ -13,13 +13,13 @@
 - **No skill-owned scripts.** `setup.sh` and `tests/*.sh` are repo infrastructure and run at install or in CI. The skill itself issues only `curl` and MCP tool calls.
 - **Production mode never writes to NocoDB.** Only `getBaseInfo`, `getTablesList`, `getTableSchema`, `queryRecords`, `getRecord`, `countRecords`, `aggregate`, `readAttachment` are permitted. `createRecords`, `updateRecords`, `deleteRecords` are forbidden.
 - **Test mode never touches NocoDB. Production mode never touches the discovery endpoint.**
-- **Discovery production URL:** `https://n8n.goautofusion.com/webhook/stream`. The `webhook-test/stream` variant is documentation-only.
+- **Discovery production URL:** `https://n8n.lrc-limited.com/webhook/stream`. The `webhook-test/stream` variant is documentation-only.
 - **Discovery request body:** `{"keywords": "<comma separated>", "qualificationPrompt": "<text>"}`
 - **A discovery run takes 5–15 minutes.** Claude Code's Bash tool caps a foreground command at 600000 ms. Every discovery call is backgrounded to a file and polled. Never a blocking foreground `curl`.
 - **Job titles are requested from the user before every enrichment run**, with no exceptions and no carry-over between runs in the same conversation.
 - **`Streams` and `Template` are reserved tables.** Never enrichment targets. `Template` is never read or written.
 - **Real API keys are committed.** The repo is private; this is the user's stated decision. Keys live in `credentials.env` as the single source of truth.
-- **NocoDB MCP endpoint:** `https://db.goautofusion.com/mcp/nc6gt1uozqt6i76m`, header `xc-mcp-token`.
+- **NocoDB MCP endpoint:** `https://db.lrc-limited.com/mcp/nc6gt1uozqt6i76m`, header `xc-mcp-token`.
 - **AI Ark MCP endpoint:** `https://api.ai-ark.com/v1/mcp?token=<key>` — token is a query parameter, not a header.
 - **Repo lives on branch `build`** until the final task renames it to `main`.
 
@@ -202,7 +202,7 @@ for v in AI_ARK_API_KEY NOCODB_MCP_TOKEN NOCODB_MCP_URL DISCOVERY_URL; do
   check "$v is set and non-empty" $?
 done
 
-[ "${DISCOVERY_URL:-}" = "https://n8n.goautofusion.com/webhook/stream" ]
+[ "${DISCOVERY_URL:-}" = "https://n8n.lrc-limited.com/webhook/stream" ]
 check "DISCOVERY_URL is the production webhook, not webhook-test" $?
 
 python3 -c 'import json,sys; json.load(open(".mcp.json"))' 2>/dev/null
@@ -260,10 +260,10 @@ AI_ARK_API_KEY=
 # Use a READ-ONLY token. Production mode never writes, and deleteRecords
 # hits the live base with no undo.
 NOCODB_MCP_TOKEN=
-NOCODB_MCP_URL=https://db.goautofusion.com/mcp/nc6gt1uozqt6i76m
+NOCODB_MCP_URL=https://db.lrc-limited.com/mcp/nc6gt1uozqt6i76m
 
 # n8n discovery webhook - production URL, never webhook-test
-DISCOVERY_URL=https://n8n.goautofusion.com/webhook/stream
+DISCOVERY_URL=https://n8n.lrc-limited.com/webhook/stream
 ```
 
 - [ ] **Step 4: Create `credentials.env` with the real values**
@@ -318,7 +318,7 @@ test can pass and the shape is fixed before the generator is written.
     },
     "nocodb-streams": {
       "type": "http",
-      "url": "https://db.goautofusion.com/mcp/nc6gt1uozqt6i76m",
+      "url": "https://db.lrc-limited.com/mcp/nc6gt1uozqt6i76m",
       "headers": {
         "xc-mcp-token": "<NOCODB_MCP_TOKEN>"
       }
@@ -339,7 +339,7 @@ test can pass and the shape is fixed before the generator is written.
 url = "https://api.ai-ark.com/v1/mcp?token=<AI_ARK_API_KEY>"
 
 [mcp_servers.nocodb-streams]
-url = "https://db.goautofusion.com/mcp/nc6gt1uozqt6i76m"
+url = "https://db.lrc-limited.com/mcp/nc6gt1uozqt6i76m"
 
 [mcp_servers.nocodb-streams.http_headers]
 "xc-mcp-token" = "<NOCODB_MCP_TOKEN>"
@@ -755,7 +755,7 @@ a dead endpoint, and you will debug the wrong thing.
     cat > "data/.runs/$RUN.request.json" <<'JSON'
     {"keywords": "...", "qualificationPrompt": "..."}
     JSON
-    nohup curl -sS --max-time 1800 -X POST https://n8n.goautofusion.com/webhook/stream \
+    nohup curl -sS --max-time 1800 -X POST https://n8n.lrc-limited.com/webhook/stream \
       -H 'Content-Type: application/json' \
       -d @"data/.runs/$RUN.request.json" \
       -o "data/.runs/$RUN.response.json" \
@@ -764,7 +764,7 @@ a dead endpoint, and you will debug the wrong thing.
 Then poll for `data/.runs/$RUN.status`. When it appears, the run is done and the
 file holds the HTTP status.
 
-Use `https://n8n.goautofusion.com/webhook/stream`. The `webhook-test/` variant
+Use `https://n8n.lrc-limited.com/webhook/stream`. The `webhook-test/` variant
 is single-shot and only works right after someone clicks *Execute workflow* in
 n8n — it is a debugging aid, never the skill's path.
 

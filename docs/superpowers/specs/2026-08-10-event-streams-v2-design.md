@@ -163,7 +163,7 @@ have ([nocodb#12692](https://github.com/nocodb/nocodb/issues/12692)). Use native
 HTTP transport.
 
 ```
-https://db.goautofusion.com/mcp/nc6gt1uozqt6i76m
+https://db.lrc-limited.com/mcp/nc6gt1uozqt6i76m
 header: xc-mcp-token: <NOCODB_MCP_TOKEN>
 ```
 
@@ -176,7 +176,7 @@ directly rather than shelling out to `codex mcp add`:
 
 ```toml
 [mcp_servers.nocodb-streams]
-url = "https://db.goautofusion.com/mcp/nc6gt1uozqt6i76m"
+url = "https://db.lrc-limited.com/mcp/nc6gt1uozqt6i76m"
 [mcp_servers.nocodb-streams.http_headers]
 "xc-mcp-token" = "<token>"
 
@@ -208,7 +208,7 @@ live base has no undo. Enforce it at the token, not by trusting the agent.
 ### Contract
 
 ```
-POST https://n8n.goautofusion.com/webhook/stream
+POST https://n8n.lrc-limited.com/webhook/stream
 Content-Type: application/json
 
 { "keywords": "a, b, c", "qualificationPrompt": "..." }
@@ -227,7 +227,7 @@ Response: a JSON array of judged companies, each
 }
 ```
 
-`https://n8n.goautofusion.com/webhook-test/stream` is the n8n *test* URL. It is
+`https://n8n.lrc-limited.com/webhook-test/stream` is the n8n *test* URL. It is
 single-shot — it 404s with `"The requested webhook \"stream\" is not
 registered"` until someone clicks **Execute workflow** on the canvas, and dies
 again after one call. It belongs in the docs as a debugging aid; the skill only
@@ -248,7 +248,7 @@ The skill therefore always backgrounds the call to a file and polls:
 
 ```bash
 mkdir -p data/.runs
-curl -sS --max-time 1800 -X POST https://n8n.goautofusion.com/webhook/stream \
+curl -sS --max-time 1800 -X POST https://n8n.lrc-limited.com/webhook/stream \
   -H 'Content-Type: application/json' \
   -d @data/.runs/<run>.request.json \
   -o data/.runs/<run>.response.json \
