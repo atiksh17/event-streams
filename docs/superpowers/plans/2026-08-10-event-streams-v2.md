@@ -19,7 +19,7 @@
 - **Job titles are requested from the user before every enrichment run**, with no exceptions and no carry-over between runs in the same conversation.
 - **`Streams` and `Template` are reserved tables.** Never enrichment targets. `Template` is never read or written.
 - **Real API keys are committed.** The repo is private; this is the user's stated decision. Keys live in `credentials.env` as the single source of truth.
-- **NocoDB MCP endpoint:** `https://db.lrc-limited.com/mcp/nc6gt1uozqt6i76m`, header `xc-mcp-token`.
+- **NocoDB MCP endpoint:** `https://db.lrc-limited.com/mcp/ncuiv55fi0t1x0em`, header `xc-mcp-token`.
 - **AI Ark MCP endpoint:** `https://api.ai-ark.com/v1/mcp?token=<key>` — token is a query parameter, not a header.
 - **Repo lives on branch `build`** until the final task renames it to `main`.
 
@@ -260,7 +260,7 @@ AI_ARK_API_KEY=
 # Use a READ-ONLY token. Production mode never writes, and deleteRecords
 # hits the live base with no undo.
 NOCODB_MCP_TOKEN=
-NOCODB_MCP_URL=https://db.lrc-limited.com/mcp/nc6gt1uozqt6i76m
+NOCODB_MCP_URL=https://db.lrc-limited.com/mcp/ncuiv55fi0t1x0em
 
 # n8n discovery webhook - production URL, never webhook-test
 DISCOVERY_URL=https://n8n.lrc-limited.com/webhook/stream
@@ -318,7 +318,7 @@ test can pass and the shape is fixed before the generator is written.
     },
     "nocodb-streams": {
       "type": "http",
-      "url": "https://db.lrc-limited.com/mcp/nc6gt1uozqt6i76m",
+      "url": "https://db.lrc-limited.com/mcp/ncuiv55fi0t1x0em",
       "headers": {
         "xc-mcp-token": "<NOCODB_MCP_TOKEN>"
       }
@@ -339,7 +339,7 @@ test can pass and the shape is fixed before the generator is written.
 url = "https://api.ai-ark.com/v1/mcp?token=<AI_ARK_API_KEY>"
 
 [mcp_servers.nocodb-streams]
-url = "https://db.lrc-limited.com/mcp/nc6gt1uozqt6i76m"
+url = "https://db.lrc-limited.com/mcp/ncuiv55fi0t1x0em"
 
 [mcp_servers.nocodb-streams.http_headers]
 "xc-mcp-token" = "<NOCODB_MCP_TOKEN>"

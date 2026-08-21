@@ -163,7 +163,7 @@ have ([nocodb#12692](https://github.com/nocodb/nocodb/issues/12692)). Use native
 HTTP transport.
 
 ```
-https://db.lrc-limited.com/mcp/nc6gt1uozqt6i76m
+https://db.lrc-limited.com/mcp/ncuiv55fi0t1x0em
 header: xc-mcp-token: <NOCODB_MCP_TOKEN>
 ```
 
@@ -176,7 +176,7 @@ directly rather than shelling out to `codex mcp add`:
 
 ```toml
 [mcp_servers.nocodb-streams]
-url = "https://db.lrc-limited.com/mcp/nc6gt1uozqt6i76m"
+url = "https://db.lrc-limited.com/mcp/ncuiv55fi0t1x0em"
 [mcp_servers.nocodb-streams.http_headers]
 "xc-mcp-token" = "<token>"
 
