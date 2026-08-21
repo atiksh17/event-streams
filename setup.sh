@@ -189,10 +189,10 @@ echo
 [ -r "$CREDENTIALS_FILE" ] || die "no credentials file at $CREDENTIALS_FILE. Copy .env.example to .env and fill it in."
 set -a; . "$CREDENTIALS_FILE"; set +a
 
-for v in AI_ARK_API_KEY NOCODB_MCP_TOKEN NOCODB_MCP_URL DISCOVERY_URL; do
+for v in AI_ARK_API_KEY NOCODB_MCP_TOKEN NOCODB_MCP_URL DISCOVERY_URL N8N_API_KEY; do
   [ -n "${!v:-}" ] || die "credential $v is empty in $CREDENTIALS_FILE"
 done
-ok "credentials loaded (4 values)"
+ok "credentials loaded (5 values)"
 
 # ---- 2. generate configs --------------------------------------------------
 AI_ARK_URL="https://api.ai-ark.com/v1/mcp?token=${AI_ARK_API_KEY}"
@@ -269,6 +269,23 @@ fi
 # cloned repo silently gaining live MCP servers would be a supply-chain hole.
 # .mcp.json stays in the repo as a fallback for anyone who wants to approve it
 # by hand.
+#
+# Re-verified 2026-08-21, and the gate is the PROJECT TRUST dialog, not the
+# settings key. A fresh `git clone` into a path Claude had never seen listed
+# both servers as "Pending approval" even though the clone carried
+# .claude/settings.json with enableAllProjectMcpServers true. In an already
+# trusted folder the same .mcp.json resolves as "Project config (shared via
+# .mcp.json)" and connects, with enabledMcpjsonServers still empty. So on a
+# new machine the two working routes are: run this script, or open `claude`
+# in the folder once and accept the trust prompt. This script exists so the
+# first route needs no interactive step.
+#
+# The cost of this route is drift: these entries are a SNAPSHOT of .env taken
+# at setup time, and they SHADOW .mcp.json. On 2026-08-21 the endpoint domain
+# moved, .env and .mcp.json were both corrected, and this stale snapshot kept
+# pointing every Claude session at the dead host. The verify section below now
+# compares the registered URL against .env and fails loudly on a mismatch.
+# If you change .env, re-run this script.
 if command -v claude >/dev/null 2>&1; then
   # Upgrade path: strip the global entries older versions of this script
   # installed, or they shadow the project-scoped ones and nobody can tell
@@ -364,6 +381,24 @@ if command -v claude >/dev/null 2>&1; then
     if echo "$out" | grep -q "^${s}:.*Connected"; then ok "claude $s connected"
     else printf '  \033[31mFAIL\033[0m claude %s did not connect\n' "$s"; rc=1; fi
   done
+
+  # Drift guard. The entries installed above are a snapshot of .env, and they
+  # shadow .mcp.json, so a stale snapshot silently wins over a corrected repo.
+  # "Connected" alone does not prove it is connected to the RIGHT host - on
+  # 2026-08-21 a stale entry stayed green against a host that had moved.
+  if echo "$out" | grep -q "^nocodb-streams:.*${NOCODB_MCP_URL}"; then
+    ok "claude nocodb-streams points at the URL in $CREDENTIALS_FILE"
+  else
+    printf '  \033[31mFAIL\033[0m claude nocodb-streams does NOT match NOCODB_MCP_URL in %s - stale registration shadowing .mcp.json. Re-run this script.\n' "$CREDENTIALS_FILE"
+    rc=1
+  fi
+  if echo "$out" | grep -q "^ai-ark:.*${AI_ARK_URL}"; then
+    ok "claude ai-ark points at the URL derived from $CREDENTIALS_FILE"
+  else
+    printf '  \033[31mFAIL\033[0m claude ai-ark does NOT match AI_ARK_API_KEY in %s - stale registration. Re-run this script.\n' "$CREDENTIALS_FILE"
+    rc=1
+  fi
+
   outside=$(cd "$ELSEWHERE" && claude mcp list 2>&1 || true)
   leaked=""
   for s in ai-ark nocodb-streams; do

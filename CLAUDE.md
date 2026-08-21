@@ -34,6 +34,24 @@ n8n API, and never go looking for a request-shape bug.
 If the MCP servers are not connected yet, run `./setup.sh` once. It wires both
 of them to this folder and nowhere else.
 
+**On a fresh clone this is the whole install.** Every config a machine needs is
+committed — `.env`, `.mcp.json`, `.codex/config.toml`, `.claude/settings.json`
+and the `.codex/skills` symlink all arrive with the repo, already pointing at
+the live host. Verified 2026-08-21 by cloning from GitHub into a clean path.
+
+The one thing that does not travel is Claude's **project trust**, which is
+per-folder per-machine. Until the folder is trusted, `.mcp.json` servers list
+as *"Pending approval"* even though `.claude/settings.json` ships with
+`enableAllProjectMcpServers: true` — confirmed on that clean clone. Two ways
+past it: run `./setup.sh`, which registers the servers directly and needs no
+prompt, or open `claude` in the folder once and accept the trust dialog.
+
+**`.env` is the single source of truth.** `setup.sh` generates `.mcp.json` and
+`.codex/config.toml` from it. Change a value there, re-run `./setup.sh`, and
+commit all three together — the registrations it writes are a snapshot, and a
+stale one silently shadows a corrected `.mcp.json`. `tests/test_configs.sh`
+now fails if `.mcp.json` and `.env` disagree.
+
 ## Running as Codex
 
 Both modes work in Codex. AI Ark's remote endpoint still returns plain JSON

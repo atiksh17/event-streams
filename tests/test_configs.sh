@@ -12,13 +12,43 @@ check ".env exists" $?
 # shellcheck disable=SC1091
 set -a; . ./.env 2>/dev/null; set +a
 
-for v in AI_ARK_API_KEY NOCODB_MCP_TOKEN NOCODB_MCP_URL DISCOVERY_URL; do
+for v in AI_ARK_API_KEY NOCODB_MCP_TOKEN NOCODB_MCP_URL DISCOVERY_URL N8N_API_KEY; do
   [ -n "${!v:-}" ]
   check "$v is set and non-empty" $?
 done
 
 [ "${DISCOVERY_URL:-}" = "https://n8n.lrc-limited.com/webhook/stream" ]
 check "DISCOVERY_URL is the production webhook, not webhook-test" $?
+
+# Every endpoint must sit on the live domain. The old host now returns 503, and
+# a stale one hides easily: it stays syntactically valid and fails only at runtime.
+# git grep, not grep -r: a clone only ever receives TRACKED files, and the
+# gitignored Stream Template*.json exports still carry the retired domain.
+# The needle is assembled at runtime so this file cannot match itself.
+retired="goauto"; retired="${retired}fusion"
+! git grep -qI "$retired" -- . 2>/dev/null
+check "no tracked file points at the retired domain" $?
+
+case "${NOCODB_MCP_URL:-}" in
+  *db.lrc-limited.com/mcp/*) true ;;
+  *) false ;;
+esac
+check "NOCODB_MCP_URL is on the live db host" $?
+
+# .env is the single source of truth; .mcp.json is generated from it by
+# setup.sh. If they disagree, setup.sh has not been re-run since .env changed.
+python3 - <<'PY'
+import json, os, sys
+env = {}
+for line in open(".env"):
+    line = line.strip()
+    if line and not line.startswith("#") and "=" in line:
+        k, v = line.split("=", 1)
+        env[k] = v
+cfg = json.load(open(".mcp.json"))["mcpServers"]
+sys.exit(0 if cfg["nocodb-streams"]["url"] == env.get("NOCODB_MCP_URL") else 1)
+PY
+check ".mcp.json NocoDB URL matches .env (setup.sh re-run after any .env change)" $?
 
 python3 -c 'import json,sys; json.load(open(".mcp.json"))' 2>/dev/null
 check ".mcp.json is valid JSON" $?

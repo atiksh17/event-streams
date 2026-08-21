@@ -14,7 +14,12 @@ it only touches this folder:
 
 Credentials are already filled in at **`.env`** in the repo root. You do not
 need to ask anyone for a key. All of them live there:
-`AI_ARK_API_KEY`, `NOCODB_MCP_TOKEN`, `NOCODB_MCP_URL`, `DISCOVERY_URL`.
+`AI_ARK_API_KEY`, `NOCODB_MCP_TOKEN`, `NOCODB_MCP_URL`, `DISCOVERY_URL`,
+`N8N_API_KEY`.
+
+`N8N_API_KEY` is the one that stops a running execution —
+`POST /api/v1/executions/<id>/stop` over `curl`, never the n8n MCP server,
+which points at a different instance. Read the skill's rule 7 before using it.
 
 Never print a credential's value into the conversation, and never paste one
 into a chat message. Read them from `.env` and use them.
