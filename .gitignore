@@ -9,3 +9,4 @@ data/.runs/
 
 # n8n workflow exports — contain inline third-party API keys, do not commit
 Stream Template*.json
+VIBECHECK.md
