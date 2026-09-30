@@ -1,6 +1,6 @@
 ---
 name: event-streams
-description: Use when trialling keywords and qualification prompts for a lead-sourcing stream ("test these keywords", "the results are too broad", "try a tighter prompt"), when turning rows an automated stream has already collected into an enriched contact CSV ("enrich the new rows in <table>", "get me contacts for these companies"), or when managing the stream records themselves — saving a tested stream, editing one's config, and starting or stopping it ("start the stream", "stop that stream", "pause it", "turn this one on"). Test mode is two endpoints and two trays; production mode is NocoDB and AI Ark.
+description: Use when trialling keywords and qualification prompts for a lead-sourcing stream ("test these keywords", "the results are too broad", "try a tighter prompt"), when turning rows an automated stream has already collected into an enriched contact CSV ("enrich the new rows in <table>", "get me contacts for these companies"), or when managing the stream records themselves — saving a tested stream, editing one's config, and starting or stopping it ("start the stream", "stop that stream", "pause it", "turn this one on"). Test mode is the hosted lead pipeline and the Excel workbook it produces; production mode is NocoDB and AI Ark.
 ---
 
 # Event Streams
@@ -13,12 +13,12 @@ either a few minutes or real money.
 
 | Mode | Use when | Touches |
 |---|---|---|
-| **Test** | Trialling keywords, sources and a qualification prompt | Discovery + qualification endpoints and the two trays, plus `Streams` to save the result |
+| **Test** | Trialling keywords, sources and a qualification prompt | The hosted lead pipeline and its Excel workbook, plus `Streams` to save the result |
 | **Production** | Enriching rows a daily stream already collected | NocoDB + AI Ark |
 
-Production mode never calls the discovery or qualification endpoints. Test
-mode's own NocoDB is the two trays, plus one deliberate crossing: saving a
-tested stream into the `Streams` table, on the user's explicit go-ahead. See
+Production mode never calls the lead pipeline. Test mode touches no NocoDB
+except one deliberate crossing: saving a tested stream into the `Streams`
+table, on the user's explicit go-ahead. See
 [Writing to `Streams`](#writing-to-streams), which both modes share and neither
 may use without a yes.
 
@@ -26,91 +26,69 @@ may use without a yes.
 the user likes hands them to the AI Ark procedure in
 [Production mode](#production-mode) — steps 3 to 8, gates and all. Test mode
 does not get a shortcut around the job-titles question, the news-publication
-screening or the spend confirmation just because the rows came from a tray.
+screening or the spend confirmation just because the rows came from a test
+workbook.
 
 ## Test mode
 
 Test mode answers one question: **if we ran this stream for real, would it find
 the right companies?** Someone is trialling keywords and a qualification prompt
-and wants a readable sample quickly — so keep the keyword list short and stop
-the run at a small number of qualified results.
+and wants a readable sample — so keep the keyword list short and the sources
+no wider than the question needs.
 
-Two stages, two endpoints, two NocoDB trays. Proven end to end 2026-08-17.
+One hosted service does the whole test: the **lead pipeline**, at
+`http://169.58.58.243:3000`. One request runs every stage in
+order — source → resolve → dedup → crawl → classify → sink — and the result
+is an **Excel workbook** for that run. Test mode touches no NocoDB except the
+deliberate crossing into `Streams`.
 
-    discovery endpoint     → Source Tray     m3s2n0eevrh9d5p   every scraped item
-    qualification endpoint → Relevance Tray  mz8e0h1xfwalzeh   only what passed
+    POST /stream            → runId          one run, every stage
+    GET  /runs/<runId>      → status          stage, progress, counters
+    GET  /runs/<runId>/xlsx → the workbook    every judged row, with its verdict
 
-**The split is the whole design.** Scraping is the expensive half, so it is
-banked *before* judgement. A qualification run that fails, or a prompt you want
-to re-tune, replays from the Source Tray at zero scraping cost. Before this
-split, a failure at minute 44 destroyed everything — 129 qualified companies
-were lost exactly that way on 2026-08-15.
+Nothing is written to a stream's own table in test mode, and the pipeline
+writes nothing to NocoDB at all: its NocoDB sink is switched off —
+`GET /config` reports `"sinks":{"csv":true,"nocodb":false}`. If that ever
+reads `"nocodb":true`, say so before firing a run: it points at a retired
+scratch table.
 
-Nothing is written to a stream's own table in test mode. The trays are
-disposable scratch space and the only NocoDB the discovery/qualification path
-touches.
+### The endpoint
 
-### The endpoints
+Base **`http://169.58.58.243:3000`** — a remote server, not this machine.
+Plain HTTP, no trailing path. Verified 2026-09-30: `/health`, `/config` and
+`/runs` all answer `200`.
 
-Base `https://n8n.lrc-limited.com`.
-
-| Stage | **Use this — the default** | Dev endpoint — developer only |
+| Method | Path | Use |
 |---|---|---|
-| Discovery | `POST /webhook/stream` | `POST /webhook-test/stream` |
-| Qualification | `POST /webhook/qualification` | `POST /webhook-test/qualification` |
+| `GET` | `/health` | Free liveness check. `{"status":"ok",...}` means the service is up |
+| `GET` | `/config` | Free. Whether auth is required, which sinks are on, `maxConcurrentRuns` |
+| `POST` | `/stream` | Start a run. Answers `202 {"status":"queued","runId":"..."}` immediately |
+| `GET` | `/runs/<runId>` | Status (`queued` / `running` / `completed` / `failed` / `cancelled`), `currentStage`, per-stage `done`/`total`, `progress`, `warnings` |
+| `GET` | `/runs/<runId>/log?tail=50` | The run log — read it before theorising about any failure |
+| `GET` | `/runs/<runId>/xlsx` | **The result.** Excel workbook, `404` until the run has finished |
+| `GET` | `/runs/<runId>/csv` | Same rows as CSV |
+| `POST` | `/runs/<runId>/cancel` | Stop a run. **Discards its results** — see step 4 |
 
-"Qualification endpoint" and "relevance check" are the same thing; the user
-uses both names.
+**Auth.** `GET /config` says whether a token is needed. Today it reads
+`"authRequired":false`, so no header is sent. If it ever reads `true`, every
+route but `/health` needs `Authorization: Bearer <token>` — ask the user for
+the token rather than guessing one, and never print it (rule 1).
 
-**The left column is the default and covers test mode.** If the user handed
-you keywords and a prompt and said nothing about which URL to use, fire the
-left column. It needs no arming and can be fired as often as you like.
-
-**Arming and being active are two different switches, and only one is yours to
-reason about.** A `webhook/` URL needs no arming, but its workflow still has to
-be **Active** in n8n — and the two stages are toggled independently, so
-discovery being live tells you nothing about qualification. Verified 2026-08-17:
-`/webhook/stream` answered while `/webhook/qualification` 404'd with *"The
-workflow must be active for a production URL to run"*, and flipping that one
-toggle fixed it. Run the [GET liveness check](#the-free-liveness-check--do-this-before-blaming-a-run)
-on **the stage you are about to fire**, not on the one that worked last time.
-
-**Call the right column the *dev endpoint*, never the "test endpoint".** Test
-mode is a mode the *user* runs. A `webhook-test/` URL is for whoever is
-debugging the *backend*. They are two different things and the names collide,
-which is exactly how a routine test-mode run ends up firing an unarmed URL and
-404ing. Use a dev endpoint **only when the user has said in this conversation
-that they are the developer and want to exercise the backend.** The words
-"test", "testing" and "test mode" are not that statement, and never imply it.
-
-**The dev endpoints are single-shot and must be armed by a human.** One answers
-exactly one call after someone clicks *Execute workflow* on the n8n canvas,
-then disarms. An unarmed call returns `404` in ~0.5s with *"not registered…
-Click the 'Execute workflow' button"*. **You cannot arm it yourself** — ask the
-user, wait for them to confirm, then fire once. One arming, one call: re-firing
-needs re-arming.
-
-Each stage exists as **two workflow copies** — a webhook-triggered one (what
-test mode calls) and an `executeWorkflow`-triggered one the daily system calls
-(production). They were split so a failure lands in one identifiable workflow
-instead of a single monolith. Test mode never touches the production pair.
+**The server is not yours to start or restart.** It runs on a remote host. If
+`/health` does not answer, that is the user's to fix — say so and stop, rather
+than firing runs at it.
 
 ### Timing, measured
 
-**Discovery** runs **~5.5 minutes** and returns `200` with the banked rows.
+**A full run with all three sources takes about an hour.** Two runs on
+2026-09-28 took 64 and 66 minutes: sourcing 4–8 minutes, resolve up to ~1.5,
+crawl 5–9, and **classify ~50 minutes** for ~825 crawled rows. Most of a run is
+judgement. Tell the user this before firing, not after they start waiting.
 
-**Qualification acks in 1–13 seconds** with `{"message":"Workflow was
-started"}` — that body is the *correct* response here, not a fault — and then
-grinds in the background for roughly **10 to 15 minutes**, writing qualified
-companies into the Relevance Tray as it goes.
+The time scales with how many rows the keywords and sources bring back, so
+fewer keywords and fewer sources is how a test gets faster.
 
-**The pass rate is 10–20%**: one qualified company per 10 to 20 rows judged. So
-a target of 10 needs on the order of 50–150 rows judged, and it is slow on
-purpose. Tell the user a higher target means a longer wait rather than letting
-them discover it.
-
-**Do not quote "5 to 15 minutes" for a whole run** — that figure was never
-observed and predates the split.
+**The pass rate is roughly 10–20%** of rows judged.
 
 ### Pick the sources
 
@@ -122,10 +100,10 @@ run sweeps. **Three values are accepted, and the spelling is exact:**
     "LinkedIn"
 
 - **At least one.** An empty array is not a valid request, and neither is
-  omitting the field.
+  omitting the field — the pipeline answers `400`.
 - **Copy those strings; do not retype them from memory.** `"Google news"`,
   `"JustGiving"`, `"Linkedin"`, `"Just Giving"` are all wrong.
-- The brand styles itself *JustGiving* in public. The endpoint wants
+- The brand styles itself *JustGiving* in public. The request wants
   `Justgiving`, lowercase g. **Do not "correct" it.**
 - Whatever is in the array is what runs. All three strings = all three
   sources.
@@ -133,7 +111,7 @@ run sweeps. **Three values are accepted, and the spelling is exact:**
 If the user has no preference, use all three and say that you did — a pass rate
 means nothing without knowing which sources produced it.
 
-### 0. Ask for all four inputs, before touching any endpoint
+### 0. Ask for all four inputs, before starting a run
 
 **Every run. All four. Before anything is fired.**
 
@@ -142,18 +120,19 @@ means nothing without knowing which sources produced it.
 | 1 | **Search keywords** | The terms that build the seed list of articles and posts. |
 | 2 | **Qualification prompt** | Plain-English instructions for judging whether a post or article is actually relevant. |
 | 3 | **Sources** | Which of the three above to sweep. |
-| 4 | **How many qualified results** | The stop target `N`. **Default 10.** |
+| 4 | **How many qualified results** | How many to show. **Default 10.** |
 
-On the fourth, **say that a higher number makes the test slower** — otherwise
-someone asks for 100 out of habit and waits an hour for a sample nobody reads.
+On the fourth, be accurate about what it does. **The pipeline judges
+every row it crawled, and cannot stop early without losing the run** (step 4).
+So this number decides how many qualified companies you present, highest
+confidence first. It does not change how long the run takes; keywords and
+sources do.
 
-> How many qualified companies do you want out of this test? Default is 10.
-> The higher the number the longer it runs — only about 1 in 10 to 1 in 20
-> rows passes qualification, so 10 is usually enough to judge the keywords and
-> the prompt.
+> How many qualified companies do you want to look at? Default is 10. The run
+> itself takes about an hour whatever you pick — fewer keywords or sources is
+> what makes it quicker.
 
-Whatever they say is the stop target `N`. Everything past `N` is time and
-credits spent on rows that will not be read.
+Whatever they say is the display target `N`.
 
 **If the user asks you to write the keywords or the prompt, do it — within
 limits.** Keep the keyword list **short**; a test is meant to come back fast,
@@ -164,14 +143,13 @@ after, ask before writing anything.** A prompt built on a guess produces a pass
 rate that answers no question at all. [docs/test-mode.md](../../../docs/test-mode.md)
 has the pattern for a prompt that discriminates.
 
-Then check the trays are clear of other runs' rows, and **note the highest
-`Id` in each** — that is your baseline, and anything above it is yours.
-Never delete tray rows (rule 3).
+### 1. Check the service, then start the run
 
-### 1. Fire discovery
+    curl -sS --max-time 10 http://169.58.58.243:3000/health
 
-**Never run this in the foreground** — the harness kills a foreground command
-at 10 minutes and the kill looks exactly like a dead endpoint.
+Then write the request to disk and fire it. `POST /stream` answers in well
+under a second, and the run carries on inside the pipeline's own process, so
+there is nothing to background on your side.
 
     mkdir -p data/.runs
     RUN=$(date +%Y%m%d-%H%M%S)
@@ -180,145 +158,108 @@ at 10 minutes and the kill looks exactly like a dead endpoint.
      "qualificationPrompt": "...",
      "sources": ["Google News", "Justgiving", "LinkedIn"]}
     JSON
-    nohup curl -sS --connect-timeout 15 --max-time 900 \
-      -X POST https://n8n.lrc-limited.com/webhook/stream \
+    curl -sS --max-time 30 -X POST http://169.58.58.243:3000/stream \
       -H 'Content-Type: application/json' \
-      -d @"data/.runs/$RUN.request.json" \
-      -D "data/.runs/$RUN.headers" \
-      -o "data/.runs/$RUN.response.json" \
-      -w 'http=%{http_code} time=%{time_total}s bytes=%{size_download}' \
-      > "data/.runs/$RUN.status" 2>&1 &
+      --data-binary @"data/.runs/$RUN.request.json" \
+      | tee "data/.runs/$RUN.response.json"
 
-Expect `200` in **~5.5 minutes**, and the Source Tray to hold everything
-scraped. A measured run on 2026-08-17 banked **243 rows** — 158 Justgiving,
-45 Google News, 40 LinkedIn — from two keywords.
+Expect `202` with `{"status":"queued","runId":"20260928T133025Z-37cunf",...}`.
+**Keep the `runId`** — every later call uses it. A `queuePosition` above 0
+means other runs are ahead (`MAX_CONCURRENT_RUNS`, default 3); it starts when a
+slot frees.
 
-**Read `$RUN.headers` before theorising about any failure.** It says which
-layer answered. A failure diagnosed without it is a guess.
+`keywords` is one comma-separated string. A leading `#` keeps a hashtag for
+LinkedIn. `daysInPast` is optional (default 14).
 
-#### Knowing when discovery has finished
+### 2. Watch the run
 
-**Watch the Source Tray, not the curl.** Poll `countRecords` on
-`m3s2n0eevrh9d5p` every ~30 seconds.
+Poll `GET /runs/<runId>` every **60 seconds**. Report movement as it happens
+rather than waiting in silence:
 
-- **Rows start appearing** → discovery is working. That is the signal the
-  endpoint is alive and scraping. Say so, and do **not** stop anything here —
-  nothing needs stopping at this stage.
-- **The count stops rising, and stays flat for 20–60 seconds** → discovery is
-  done. Now say it plainly: *"Discovery finished — 243 rows in the Source
-  Tray."*
+- `currentStage` and that stage's `done`/`total`/`unit` — e.g. *"crawl: 410 of
+  1188 pages"*, *"classify: batch 12 of 33"*.
+- `progress.sourced`, `progress.bySource`, `progress.afterDedup`,
+  `progress.crawled` — as each stage closes.
+- `warnings` — a source that failed while the others carried on. **Say so**:
+  the run is still useful, but its pass rate describes fewer sources than the
+  user asked for.
 
-Do not move to qualification while the count is still climbing. Rows banked
-after you build the payload are rows the test never judges.
+`progress.matched` is only filled in when classify finishes, so there is no
+live qualified count — do not report one.
 
-### 2. Build the qualification payload from the Source Tray
+The run is finished when `status` is `completed` (or `failed` / `cancelled`).
+Classify sitting on the same batch for several minutes is normal; each LLM
+call can take a couple of minutes, and retries are logged. Check
+`/runs/<runId>/log?tail=50` before calling it stuck.
 
-**Send every record the Source Tray holds.** The tray is what discovery just
-banked, and the whole tray is what gets judged. You are not sampling it — the
-run is bounded at the far end, by stopping at `N`, not by sending less.
+### 3. Download the Excel and read it
 
-The shape is mechanical: **one object per tray row, the tray's column names as
-the keys, that row's cells as the values.** That list of objects goes in
-`data`.
+Once `status` is `completed`:
 
-Body — two fields, nothing else:
+    curl -sS -f -o "data/.runs/$RUN.xlsx" \
+      "http://169.58.58.243:3000/runs/<runId>/xlsx"
 
-    {"data": [ {title, pubDate, link, source, domain,
-                quality, bot_blocked, url, tier, content}, ... ],
-     "qualificationPrompt": "<the prompt>"}
+That local copy is the one to read and to hand the user — the server's own
+files are on the remote host. `GET /runs/<runId>/csv` gives the same rows as
+CSV if that is ever easier.
 
-`qualificationPrompt` is **camelCase, a plain string** — not `qualification-prompt`,
-not `qualification prompt`. Its value is the prompt carried on every Source
-Tray row: the same string on all of them, so read it from one row and use it.
+**The workbook has two sheets.**
 
-**Build it on disk, not through your context.** Every row carries `content`
-averaging ~12,000 characters, so 243 rows is ~3MB — enough to swamp a
-conversation. This run's discovery response file holds the same records, so
-script the transform from that file straight into
-`data/.runs/qual-body.json`. Only page the tray itself if that file is missing.
+- **`Leads`** — one row per crawled lead, frozen header. Columns, as headed:
+  `Title`, `Published`, `Link`, `URL`, `Source`, `Domain`, `Quality`,
+  `Bot blocked`, `Tier`, `Type`, `Author`, `Content`, `Qualification prompt`,
+  `Match`, `Confidence`, `Reason`.
+- **`Run`** — the request (keywords, sources, prompt), per-stage timings and
+  row counts, and every counter.
 
-**If a large payload is rejected or the worker stalls**, that is the known
-2026-08-15 failure — big single bodies repeatedly stalled n8n. Say so, then
-split the tray into batches and fire them in sequence rather than quietly
-dropping rows. Never silently send a subset: a pass rate computed over rows the
-user thinks were all judged is a wrong number, not a rough one.
+**`Match` is text, not a boolean**: `true`, `false`, or **empty**. Empty means
+the row was **never judged** — its LLM batch failed — which is not the same as
+a rejection. `Confidence` is a number 0–100, empty on unjudged rows.
 
-### 3. Fire qualification
+**Read it with a script, not through your context.** `Content` runs to
+thousands of characters per row. Pull the qualified rows out on disk:
 
-    nohup curl -sS --connect-timeout 15 --max-time 1800 \
-      -X POST https://n8n.lrc-limited.com/webhook/qualification \
-      -H 'Content-Type: application/json' \
-      --data-binary @"data/.runs/qual-body.json" \
-      -o "data/.runs/$RUN.qual.response.json" \
-      -w 'http=%{http_code} time=%{time_total}s' \
-      > "data/.runs/$RUN.qual.status" 2>&1 &
+    python - "data/.runs/$RUN.xlsx" <<'PY'
+    import sys, openpyxl            # pip install openpyxl, if missing
+    ws = openpyxl.load_workbook(sys.argv[1], read_only=True)["Leads"]
+    rows = ws.iter_rows(values_only=True)
+    head = next(rows)
+    leads = [dict(zip(head, r)) for r in rows]
+    judged = [l for l in leads if l["Match"] in ("true", "false")]
+    passed = sorted((l for l in leads if l["Match"] == "true"),
+                    key=lambda l: -(l["Confidence"] or 0))
+    print(f"{len(leads)} rows, {len(judged)} judged, {len(passed)} passed")
+    for l in passed:
+        print(l["Confidence"], l["Source"], l["Domain"], l["Title"], "|", l["Reason"])
+    PY
 
-`200` with `{"message":"Workflow was started"}` in seconds is **success** —
-the endpoint acks and works in the background. Results arrive in the Relevance
-Tray, never in this response.
+**Unjudged rows change the arithmetic.** On 2026-09-28 one run had 825 rows
+and only 152 judged. The pass rate is **passed ÷ judged**, never passed ÷ all
+rows. A large unjudged share is a fault to report — grep the run log for
+`classify request failed` — not a verdict on the prompt.
 
-### 4. Watch the Relevance Tray, stop at `N`
+### 4. Stopping a run
 
-Poll `countRecords` on `mz8e0h1xfwalzeh` every **30–60 seconds**. Rows appear
-one at a time as companies qualify. Report progress as it moves rather than
-waiting in silence.
-
-**Be patient here — this is the slow half.** Expect **10 to 15 minutes**, and a
-**10–20% pass rate**: one qualified row per 10 to 20 judged. A tray that is
-still empty after two minutes is normal and is not a fault.
-
-The moment the count reaches `N` above your baseline, **stop the execution**.
-Take `Execution ID` from any row this run wrote — it is populated on every row,
-and **every row from one execution carries the same id**, so any of them will
-do. Then:
-
-    curl -sS -X POST \
-      -H "X-N8N-API-KEY: $N8N_API_KEY" -H 'Accept: */*' \
-      "https://n8n.lrc-limited.com/api/v1/executions/<Execution ID>/stop"
-
-**The n8n public API over `curl` is the only route. Never the n8n MCP server.**
-Not to stop an execution, not to list them, not to check whether one is
-running. The MCP server in this environment is pointed at a different n8n
-instance entirely (`primary-production-d3217.up.railway.app`, verified
-2026-08-17 returning *"Application not found"*), so anything it reports is
-about the wrong system — and a stop issued through it would either fail or hit
-a stranger's workflow. `curl` against `n8n.lrc-limited.com/api/v1` is the
-contract; there is no fallback.
-
-**Stop only an execution id you read from a row this run wrote.** Never
-`/workflows/{id}/deactivate` — that switches off the daily production stream
-and fails silently.
-
-`N8N_API_KEY` lives in `.env`. **Verified working 2026-08-17**: execution
-`882` was cancelled mid-run, returning
-`{"mode":"webhook","stoppedAt":"...","finished":false,"status":"canceled"}`,
-and the Relevance Tray stopped growing within a minute. A `200` with
-`"status":"canceled"` is the success signature — confirm it by watching the
-tray go flat, not by trusting the response alone.
-
-**If the call returns `401 {"message":"unauthorized"}`, the key is for the
-wrong n8n instance.** That exact failure ran for a full day against this same
-live API (docs at `/api/v1/docs/`, spec `v1.1.1`, scheme `X-N8N-API-KEY` — all
-correct) and was fixed by issuing a fresh key on `n8n.lrc-limited.com` →
-Settings → n8n API. Do not go hunting for a request-shape bug; there isn't one.
-Say so plainly, stop polling, and tell the user the run is still spending —
-measured cost of not stopping: a run targeted at 5 qualified rows reached 14.
-
-**Set a ceiling.** If the count stops moving below `N` for ~15 minutes, stop
-the execution anyway and report what you have — *"6 of 10 requested; the
-stream looks narrow"* is a useful test result. Polling forever is the failure
-this whole design exists to prevent.
+`POST /runs/<runId>/cancel` stops it — a queued run is dropped, a running one
+has its requests aborted. **A cancelled run produces no workbook**: rows are
+written only once classify has finished, so everything judged so far is lost.
+Cancel only when the user asks for it, and tell them that first. Never cancel
+a run you did not start.
 
 ### 5. Show the results, then ask whether to enrich
 
-These are the qualified companies — the ones worth reaching out to. One row per
-company. `content` is long, so show it only when asked.
+These are the qualified rows — the ones worth reaching out to. Show the top `N`
+by confidence. The company is not a column of its own: name it from the
+article, the `Domain`, or the `Author` on a LinkedIn row. `Content` is long, so
+show it only when asked.
 
-| Company | Relevant | Confidence | Why |
+| Company | Source | Confidence | Why |
 |---|---|---|---|
 
-State the pass rate plainly — *"10 qualified out of 78 judged"* — and name the
-sources the run used. Then ask what they make of it:
+State the pass rate plainly — *"27 passed out of 152 judged (673 not judged —
+LLM batches failed)"* — and name the sources the run used. Give them the
+workbook path too, so they can open `data/.runs/<RUN>.xlsx` in Excel
+themselves. Then ask what they make of it:
 
 > Ten qualified companies from those keywords and that prompt. Do these look
 > right to you?
@@ -333,7 +274,7 @@ Two ways forward, and the user picks:
 the `ai-ark` MCP server, [steps 3 to 8](#3-screen-for-news-publications-and-dodgy-rows).
 Every gate there still applies: screen the news publications and dodgy rows,
 **ask for the job titles**, confirm the spend, then enrich. Rows arriving from
-a tray rather than a stream's table changes nothing about any of that.
+a workbook rather than a stream's table changes nothing about any of that.
 
 ### Iterate
 
@@ -347,14 +288,10 @@ bad row came from one source, drop it from the array rather than writing a
 sentence into the prompt to exclude it. If a run found almost nothing, widen
 the array before you widen the keywords.
 
-**A prompt-only change does not need a new discovery run.** The Source Tray
-still holds everything the last sweep scraped, so re-fire only step 3 against
-those same rows — one stage instead of two, and no re-scraping. Re-run
-discovery only when the keywords or the sources changed. That is the payoff for
-banking the scrape separately; take it.
-
-A full re-run costs fifteen to twenty minutes plus another round of reading
-results, so it is worth one more question up front rather than three more runs.
+**Every change is a full re-run.** The pipeline cannot re-judge an
+earlier run's rows against a new prompt, so even a prompt-only change scrapes
+again. That is about an hour each time, so it is worth one more question up
+front rather than three more runs.
 
 ### When the user is happy
 
@@ -388,38 +325,21 @@ question, asked after the row exists. Never fold the two together.
 
 | What you see | What it means | What to say |
 |---|---|---|
-| `404 ... "The workflow must be active for a production URL to run"` | Right URL, no arming needed — the n8n workflow is simply switched **off**. Each stage toggles independently, so this happens to qualification while discovery is happily running | Only a human can fix this: ask them to activate that workflow with the toggle at the top-right of the n8n editor, then re-run. Do not retry until they confirm — it will 404 every time. **Nothing is lost**: discovery's rows are already banked, so you resume at qualification with no re-scraping |
-| `404 ... is not registered ... Click the 'Execute workflow' button` in ~0.5s | A **dev endpoint** (`webhook-test/`) that nobody has armed, or whose single call is already used | **You cannot fix this yourself.** First ask why you are on a dev endpoint at all — unless the user said they are the developer, the answer is that you should be on `/webhook/…`. If a dev endpoint is genuinely wanted, ask the user to click *Execute workflow*, wait for them to confirm, then fire once. Do not retry blind — every call 404s until it is armed |
-| `{"message":"Workflow was started"}` from **`/qualification`** | **Success.** That endpoint acks immediately and works in the background | Expected. Go watch the Relevance Tray; results never come back in this response |
-| `{"message":"Workflow was started"}` from **`/stream`** | Wrong for discovery — that one is supposed to return its rows | The workflow needs a *Respond to Webhook* node; results are not coming |
-| Any error naming `sources` | A misspelled value, or an empty/missing array | Re-check the array against the three exact strings, character by character. Fix and re-run — this one is yours, not the user's |
-| `[]` | Keywords matched nothing, or the sources were too narrow | A keyword or sources problem, not a fault |
-| Every row `relevant: false` | Prompt too strict | A prompt problem — offer a looser rewrite |
-| **`http=000 bytes=0` with `time` at the full `--max-time`** | **The failure to expect today.** The origin accepted the connection and never wrote a response. Not an outage, not a slow run, not your request's content — the workflow is not answering the webhook | Say so plainly and **stop**. Do not re-fire, and do not start varying keywords, sources or the prompt to isolate it: four such runs on 2026-08-13/14 varied all three and hung identically. Ask the user to open the n8n execution log — **the workflow often completes and the results are sitting there**. Hung executions can also saturate n8n's workers, so each blind retry makes the next one worse |
-| Body is not JSON | n8n returned an error page | Show the first 500 bytes, do not parse |
-| A 16-byte body reading `error code: 524`, or `error code: 1010` with HTTP 403 | **Historical — Cloudflare, and it is no longer in front of this hostname.** Both were edge behaviours (timeout at ~120s; bot-signature block). The record was grey-clouded 2026-08-12 and verified proxy-free 2026-08-14: no `cf-ray`, no `server: cloudflare` | If either ever reappears, the hostname has been put back behind the proxy — check `$RUN.headers` first and say so, rather than debugging n8n. Note what the 524 was really hiding: it was cutting off the *same* non-response that now hangs, and turning it into a fast, legible error |
-
-#### The free liveness check — do this before blaming a run
-
-A **GET** to the same URL costs nothing, runs no workflow, and answers in
-under a second. It separates three things a failed POST cannot:
-
-    curl -sS --max-time 20 -D - https://n8n.lrc-limited.com/webhook/stream
-
-| What comes back | What it tells you |
-|---|---|
-| `{"code":404,...,"This webhook is not registered for GET requests. Did you mean to make a POST request?"}` | **Endpoint up, workflow active, path registered.** Verified 2026-08-14, 0.53s. A POST that then hangs is a response-path problem and nothing else |
-| `404 ... "The workflow must be active for a production URL to run"` | The workflow is switched **off**. One human toggle fixes it; firing more POSTs will not |
-| Connection refused / DNS failure / no answer | The host itself is down — not a workflow question at all |
-| `server: cloudflare` or a `cf-ray` header in the dump | The proxy is back in front of the origin, and the ~120s ceiling is back with it |
-
-Run this **first** whenever a POST fails. It is the cheapest fact available
-and it rules out three of the four possible causes in half a second.
+| `curl: (7) Failed to connect`, or a timeout on `/health` | The remote pipeline server is down or unreachable | Not yours to fix — tell the user the server at `169.58.58.243:3000` is not answering, and stop. Nothing was lost — no run started |
+| `400 {"status":"error","errors":[...]}` | The request was rejected — a missing field, an empty `sources`, or an unknown source name | Read the `errors` array, fix the request, re-fire. This one is yours, not the user's |
+| `401 {"status":"error","message":"unauthorized"}` | The server now requires a token (`/config` → `"authRequired":true`) | Ask the user for it and send `Authorization: Bearer <token>`. Never print it |
+| `404` from `/runs/<runId>/xlsx` | The run has not finished, or produced no rows | Check `/runs/<runId>`. Still running → keep polling. `completed` with nothing → a keyword or sources problem |
+| `status: failed` | The run broke. `error` on the record says why; *every requested source failed* is the common one | Read `/runs/<runId>/log?tail=50` and report the actual error. One failed source alone does not fail a run — that shows up in `warnings` instead |
+| `status: failed`, `error` *"interrupted by a server restart"* | The remote server restarted mid-run | Nothing can be recovered from that run. Tell the user, and re-fire only on their go-ahead |
+| `warnings` naming one source | That source failed; the run carried on with the others | Say which source is missing from the result, so the pass rate is read in that light |
+| Most rows have an empty `Match` | LLM batches failed, so those rows were never judged | Report judged and unjudged counts separately. Grep the log for `classify request failed` — the cause is there. Not a prompt problem |
+| Every judged row `false` | Prompt too strict | A prompt problem — offer a looser rewrite |
+| Very few rows at all | Keywords matched little, or the sources were too narrow | A keyword or sources problem, not a fault |
 
 ## Production mode
 
 The daily stream has already done discovery and judging. You start from its
-rows. You never call the discovery endpoint here.
+rows. You never call the lead pipeline here.
 
 Reads NocoDB via the `nocodb-streams` MCP server, enriches via the `ai-ark`
 MCP server. Never writes to AI Ark, and writes to NocoDB only through
@@ -877,19 +797,16 @@ separate question. `deleteRecords` is never called. These rules are the only
 thing stopping a bad write: the connected token is write-capable and blocks
 none of it, and against the live base there is no undo.
 
-**4. Test mode owns the two endpoints and the two trays; production mode owns
-the streams' own tables.** If you are reaching for the discovery or
-qualification endpoint in production mode, you are in the wrong mode. Two
-crossings are deliberate and both need a yes: **saving a stream row**, and
-**enriching a test's qualified companies** through the production procedure,
-gates included.
+**4. Test mode owns the hosted lead pipeline and its workbooks; production
+mode owns the streams' own tables.** If you are reaching for the pipeline in
+production mode, you are in the wrong mode. Two crossings are deliberate and
+both need a yes: **saving a stream row**, and **enriching a test's qualified
+companies** through the production procedure, gates included.
 
-**5. The `webhook/` endpoints are the default; `webhook-test/` are dev
-endpoints.** Fire `webhook/` unless the user has said they are the developer
-exercising the backend. A dev endpoint answers exactly one call and only after
-a human clicks *Execute workflow* — you cannot arm it, so ask and wait.
+**5. The pipeline's NocoDB sink stays off.** Test mode writes nothing to
+NocoDB; its output is the Excel workbook. Never set `NOCODB_ENABLED` true.
 
-**6. Stopping a run means stopping one execution, never a workflow.**
-`POST /api/v1/executions/<id>/stop`, with `<id>` from the `Execution ID` column
-of a tray row *this run wrote*. `/workflows/{id}/deactivate` switches off the
-daily production stream and fails silently.
+**6. Cancelling a run throws its results away.** `POST /runs/<runId>/cancel`
+leaves no workbook, because rows are written only after classify finishes.
+Cancel only on the user's say-so, having told them that, and only a run you
+started.
