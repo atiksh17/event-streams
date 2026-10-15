@@ -2,7 +2,7 @@
   "mcpServers": {
     "ai-ark": {
       "type": "http",
-      "url": "https://api.ai-ark.com/v1/mcp?token=6743e5f5239b44dbbc27c293dd9ca3e0"
+      "url": "https://api.ai-ark.com/v1/mcp?token=8560fb1fa3684480844204060320ce3c"
     },
     "nocodb-streams": {
       "type": "http",
